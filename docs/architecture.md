@@ -127,4 +127,3 @@ their idempotency key for exact retry.
 6. `feat: add realtime messaging lifecycle`
 7. `fix: harden accessibility and product states`
 8. `test: verify end-to-end messaging workflows`
-

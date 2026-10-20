@@ -30,12 +30,12 @@ All protected HTTP calls use `Authorization: Bearer <accessToken>`. Access and
 refresh JWTs use HS256. The access token lasts 15 minutes; the refresh token and
 database session last seven days.
 
-| Method | Path | Request | Response |
-| --- | --- | --- | --- |
-| `POST` | `/auth/register` | `{ username, email, password }` | `201 { id, username, email }` |
-| `POST` | `/auth/login` | `{ identifier, password }` | `{ userId, username, accessToken, refreshToken }` |
-| `GET` | `/auth/me` | bearer token | JWT claims `{ sub, iat, exp }` |
-| `POST` | `/auth/refresh` | `{ refreshToken }` | rotated `{ accessToken, refreshToken }` |
+| Method | Path             | Request                         | Response                                          |
+| ------ | ---------------- | ------------------------------- | ------------------------------------------------- |
+| `POST` | `/auth/register` | `{ username, email, password }` | `201 { id, username, email }`                     |
+| `POST` | `/auth/login`    | `{ identifier, password }`      | `{ userId, username, accessToken, refreshToken }` |
+| `GET`  | `/auth/me`       | bearer token                    | JWT claims `{ sub, iat, exp }`                    |
+| `POST` | `/auth/refresh`  | `{ refreshToken }`              | rotated `{ accessToken, refreshToken }`           |
 
 Registration rules: username is 3-30 alphanumeric/underscore characters;
 password is 8-128 characters with an uppercase letter, lowercase letter, and
@@ -59,16 +59,16 @@ the browser or exposed through the frontend. Evidence:
 
 Every route below requires the bearer access token.
 
-| Method | Path | Request / behavior |
-| --- | --- | --- |
-| `GET` | `/conversations` | Unpaginated membership-filtered list, ordered by `updatedAt desc`, with member rows. |
-| `GET` | `/conversations/:id` | One membership-filtered conversation with members. |
-| `POST` | `/conversations/direct` | `{ recipientId: UUID }`; returns existing or new direct conversation. |
-| `POST` | `/conversations/group` | `{ name, memberIds }`; name 2-50, at least two other unique UUIDs. |
-| `POST` | `/conversations/:id/members` | `{ userId }`; group admin only. |
-| `DELETE` | `/conversations/:id/members` | `{ userId }`; group admin only. |
-| `DELETE` | `/conversations/:id/leave-group` | Leave a group; transfers admin when required. |
-| `PATCH` | `/conversations/:id/name` | `{ name }`; group admin only. |
+| Method   | Path                             | Request / behavior                                                                   |
+| -------- | -------------------------------- | ------------------------------------------------------------------------------------ |
+| `GET`    | `/conversations`                 | Unpaginated membership-filtered list, ordered by `updatedAt desc`, with member rows. |
+| `GET`    | `/conversations/:id`             | One membership-filtered conversation with members.                                   |
+| `POST`   | `/conversations/direct`          | `{ recipientId: UUID }`; returns existing or new direct conversation.                |
+| `POST`   | `/conversations/group`           | `{ name, memberIds }`; name 2-50, at least two other unique UUIDs.                   |
+| `POST`   | `/conversations/:id/members`     | `{ userId }`; group admin only.                                                      |
+| `DELETE` | `/conversations/:id/members`     | `{ userId }`; group admin only.                                                      |
+| `DELETE` | `/conversations/:id/leave-group` | Leave a group; transfers admin when required.                                        |
+| `PATCH`  | `/conversations/:id/name`        | `{ name }`; group admin only.                                                        |
 
 Conversation shape:
 
@@ -96,12 +96,12 @@ and `apps/chat-service/prisma/schema.prisma:10-49`.
 
 ## Messages
 
-| Method | Path | Request / response |
-| --- | --- | --- |
-| `GET` | `/conversations/:id/messages?limit=50&before=<messageId>` | `{ messages, hasMore, nextBefore }` |
-| `POST` | `/conversations/:id/messages` | `{ content, idempotencyKey }` -> raw message |
-| `PATCH` | `/conversations/:id/messages/:messageId` | `{ content }` -> edited message |
-| `DELETE` | `/conversations/:id/messages/:messageId` | Soft-deleted message |
+| Method   | Path                                                      | Request / response                           |
+| -------- | --------------------------------------------------------- | -------------------------------------------- |
+| `GET`    | `/conversations/:id/messages?limit=50&before=<messageId>` | `{ messages, hasMore, nextBefore }`          |
+| `POST`   | `/conversations/:id/messages`                             | `{ content, idempotencyKey }` -> raw message |
+| `PATCH`  | `/conversations/:id/messages/:messageId`                  | `{ content }` -> edited message              |
+| `DELETE` | `/conversations/:id/messages/:messageId`                  | Soft-deleted message                         |
 
 `limit` is 1-100. Pages are returned oldest-to-newest. When `hasMore` is true,
 `nextBefore` is the oldest returned message ID. Message content is at most 4000
@@ -132,7 +132,7 @@ Evidence: `apps/chat-service/src/message/message.controller.ts:23-104`,
 
 ## Error envelope
 
-HTTP failures use:
+Chat-service failures and expected auth-service `HttpException` failures use:
 
 ```ts
 type ApiError = {
@@ -145,7 +145,11 @@ type ApiError = {
 ```
 
 Chat payload validation intentionally returns `VALIDATION_ERROR` with the
-generic message `Invalid request payload`. Evidence:
+generic message `Invalid request payload`. The auth filter is registered with
+`@Catch(HttpException)`, so an unexpected non-HTTP auth failure can fall
+through to Nest's default error response instead of this envelope. Frontend
+error parsing must therefore tolerate an unknown response shape and fall back
+to the HTTP status and a generic message. Evidence:
 `apps/auth-service/src/common/filters/http-exception.filter.ts:23-75`,
 `apps/chat-service/src/common/filters/http-exception.filter.ts:23-67`, and
 `apps/chat-service/src/main.ts:33-43`.
@@ -158,15 +162,15 @@ rejoin the active conversation after every reconnect.
 
 Client events:
 
-| Event | Payload | Success event / ACK |
-| --- | --- | --- |
-| `joinConversation` | conversation UUID | `joinedConversation { conversationId }` |
-| `sendMessage` | `{ conversationId, content, idempotencyKey }` | Socket ACK callback receives raw Message |
-| `acknowledgeDelivery` | message UUID | `deliveryAcknowledged { messageId, status }` |
-| `acknowledgeRead` | message UUID | `readAcknowledged { messageId, status }` |
-| `typing` | conversation UUID | `typingAcknowledged { conversationId }` |
-| `stopTyping` | conversation UUID | `stopTypingAcknowledged { conversationId }` |
-| `heartbeat` | none | `heartbeat { status: "ok" }` |
+| Event                 | Payload                                       | Success event / ACK                          |
+| --------------------- | --------------------------------------------- | -------------------------------------------- |
+| `joinConversation`    | conversation UUID                             | `joinedConversation { conversationId }`      |
+| `sendMessage`         | `{ conversationId, content, idempotencyKey }` | Socket ACK callback receives raw Message     |
+| `acknowledgeDelivery` | message UUID                                  | `deliveryAcknowledged { messageId, status }` |
+| `acknowledgeRead`     | message UUID                                  | `readAcknowledged { messageId, status }`     |
+| `typing`              | conversation UUID                             | `typingAcknowledged { conversationId }`      |
+| `stopTyping`          | conversation UUID                             | `stopTypingAcknowledged { conversationId }`  |
+| `heartbeat`           | none                                          | `heartbeat { status: "ok" }`                 |
 
 Server events:
 
@@ -212,4 +216,3 @@ Evidence: `apps/chat-service/src/realtime/chat.gateway.ts:31-512`,
 - Live integration was not available during discovery because ports 4000 and
   4001 were not listening. Backend unit/build verification passed independently;
   live service verification remains a Milestone 7 requirement.
-
