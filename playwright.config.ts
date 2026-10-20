@@ -16,7 +16,7 @@ export default defineConfig({
     },
     {
       command:
-        "env AUTH_SERVICE_URL=http://127.0.0.1:4100 CHAT_SERVICE_URL=http://127.0.0.1:4101 pnpm dev",
+        "env AUTH_SERVICE_URL=http://127.0.0.1:4100 CHAT_SERVICE_URL=http://127.0.0.1:4101 NEXT_PUBLIC_SOCKET_URL=http://127.0.0.1:4101 pnpm dev",
       url: "http://localhost:5000",
       reuseExistingServer: true,
     },

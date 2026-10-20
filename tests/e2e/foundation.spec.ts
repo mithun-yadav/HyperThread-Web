@@ -244,3 +244,196 @@ test("isolates conversation caches across account changes", async ({
     page.getByRole("button", { name: /Member 6ba7b8…30c8/ }),
   ).toHaveCount(0);
 });
+
+test("reconnects realtime messaging and retries with one idempotency key", async ({
+  page,
+}, testInfo) => {
+  const username = `realtime_${testInfo.project.name}_${Date.now()}`;
+  const userId = `user-${username}`;
+  const conversationId = "11111111-1111-4111-8111-111111111111";
+  await page.goto("/login");
+  await page.getByLabel("Email or username").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: /Project room/ }).click();
+
+  const connection = page.getByRole("status").filter({ hasText: "Live" });
+  await expect(connection).toHaveCount(1);
+
+  await page.request.post("http://127.0.0.1:4101/test/typing", {
+    data: {
+      userId,
+      conversationId,
+      typingUserId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+    },
+  });
+  await expect(page.getByText(/Member 6ba7b8…30c8 is typing/)).toBeVisible();
+
+  const composer = page.getByRole("textbox", { name: "Message" });
+  await composer.fill("Realtime hello");
+  await composer.press("Enter");
+  await expect(page.getByText("Realtime hello", { exact: true })).toHaveCount(
+    1,
+  );
+
+  await composer.fill("Retry this safely");
+  await composer.press("Enter");
+  await expect(page.getByText(/· failed/)).toBeVisible();
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+  await expect(
+    page.getByText("Retry this safely", { exact: true }),
+  ).toHaveCount(1);
+
+  await composer.fill("Persist during disconnect");
+  await composer.press("Enter");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Reconnecting" }),
+  ).toHaveCount(1);
+  await expect(connection).toHaveCount(1, { timeout: 15_000 });
+  await expect(
+    page.getByText("Persist during disconnect", { exact: true }),
+  ).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+
+  const statsResponse = await page.request.get(
+    `http://127.0.0.1:4101/test/socket-stats?userId=${encodeURIComponent(userId)}`,
+  );
+  const stats = (await statsResponse.json()) as {
+    attempts: Array<{ idempotencyKey: string; content: string }>;
+  };
+  const retries = stats.attempts.filter(
+    (attempt) => attempt.content === "Retry this safely",
+  );
+  expect(retries).toHaveLength(2);
+  expect(retries[0].idempotencyKey).toBe(retries[1].idempotencyKey);
+
+  await page.request.post("http://127.0.0.1:4101/test/inject-message", {
+    data: {
+      userId,
+      conversationId,
+      content: "Recovered after reconnect",
+    },
+  });
+  await page.request.post("http://127.0.0.1:4101/test/disconnect", {
+    data: { userId },
+  });
+  await expect(
+    page.getByText("Recovered after reconnect", { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  const reconnectStatsResponse = await page.request.get(
+    `http://127.0.0.1:4101/test/socket-stats?userId=${encodeURIComponent(userId)}`,
+  );
+  const reconnectStats = (await reconnectStatsResponse.json()) as {
+    connections: number;
+    joins: string[];
+  };
+  expect(reconnectStats.connections).toBeGreaterThanOrEqual(2);
+  expect(
+    reconnectStats.joins.filter((joinedId) => joinedId === conversationId)
+      .length,
+  ).toBeGreaterThanOrEqual(2);
+});
+
+test("acknowledges HTTP-loaded incoming direct messages as read", async ({
+  page,
+}, testInfo) => {
+  const username = `receipts_${testInfo.project.name}_${Date.now()}`;
+  const userId = `user-${username}`;
+  const recipientId = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
+  await page.goto("/login");
+  await page.getByLabel("Email or username").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/chat$/);
+  await expect(
+    page.getByRole("button", { name: /Project room/ }),
+  ).toBeVisible();
+
+  const conversationResponse = await page.request.post(
+    "/api/chat/conversations/direct",
+    { data: { recipientId } },
+  );
+  expect(conversationResponse.status()).toBe(201);
+  const conversation = (await conversationResponse.json()) as { id: string };
+  const messageResponse = await page.request.post(
+    "http://127.0.0.1:4101/test/inject-message",
+    {
+      data: {
+        userId,
+        conversationId: conversation.id,
+        content: "Loaded before the room opened",
+        senderId: recipientId,
+      },
+    },
+  );
+  const message = (await messageResponse.json()) as { id: string };
+
+  await page.reload();
+  await page.getByRole("button", { name: /Member 6ba7b8…30c8/ }).click();
+  await expect(
+    page.getByText("Loaded before the room opened", { exact: true }),
+  ).toBeVisible();
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(
+        `http://127.0.0.1:4101/test/socket-stats?userId=${encodeURIComponent(userId)}`,
+      );
+      const stats = (await response.json()) as {
+        receipts: Array<{ type: string; messageId: string }>;
+      };
+      return stats.receipts.some(
+        (receipt) =>
+          receipt.type === "read" && receipt.messageId === message.id,
+      );
+    })
+    .toBe(true);
+
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Back to conversations" }).click();
+  } else {
+    await page.getByRole("button", { name: /Project room/ }).click();
+  }
+  const backgroundMessageResponse = await page.request.post(
+    "http://127.0.0.1:4101/test/inject-message",
+    {
+      data: {
+        userId,
+        conversationId: conversation.id,
+        content: "Delivered while the thread is hidden",
+        senderId: recipientId,
+      },
+    },
+  );
+  const backgroundMessage = (await backgroundMessageResponse.json()) as {
+    id: string;
+  };
+  await page.request.post("http://127.0.0.1:4101/test/broadcast-message", {
+    data: { userId, conversationId: conversation.id, id: backgroundMessage.id },
+  });
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(
+        `http://127.0.0.1:4101/test/socket-stats?userId=${encodeURIComponent(userId)}`,
+      );
+      const stats = (await response.json()) as {
+        receipts: Array<{ type: string; messageId: string }>;
+      };
+      return {
+        delivered: stats.receipts.some(
+          (receipt) =>
+            receipt.type === "delivery" &&
+            receipt.messageId === backgroundMessage.id,
+        ),
+        read: stats.receipts.some(
+          (receipt) =>
+            receipt.type === "read" &&
+            receipt.messageId === backgroundMessage.id,
+        ),
+      };
+    })
+    .toEqual({ delivered: true, read: false });
+});

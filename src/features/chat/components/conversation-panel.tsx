@@ -1,10 +1,15 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  ArrowDownIcon,
   ArrowLeftIcon,
+  LoaderCircleIcon,
   MessageCircleMoreIcon,
+  RotateCcwIcon,
   SendHorizontalIcon,
+  WifiIcon,
+  WifiOffIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +22,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import type { Conversation, Message } from "@/features/chat/chat-contract";
+import type { Conversation } from "@/features/chat/chat-contract";
+import type {
+  ClientMessage,
+  RealtimeConnectionState,
+} from "@/features/chat/realtime/chat-realtime-contract";
 import {
   conversationDescription,
   conversationTitle,
@@ -31,6 +40,13 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
+function connectionLabel(state: RealtimeConnectionState) {
+  if (state === "connected") return "Live";
+  if (state === "connecting") return "Connecting";
+  if (state === "reconnecting") return "Reconnecting";
+  return "Offline";
+}
+
 export function ConversationPanel({
   conversation,
   currentUserId,
@@ -40,23 +56,33 @@ export function ConversationPanel({
   hasMore,
   loadingMore,
   olderError,
+  connectionState = "offline",
+  connectionError,
+  typingUserIds = [],
   onBack,
   onRetry,
   onLoadMore,
   onSend,
+  onRetrySend,
+  onTypingChange,
 }: {
   conversation: Conversation | null;
   currentUserId: string;
-  messages: Message[];
+  messages: ClientMessage[];
   loading: boolean;
   error?: string | null;
   hasMore?: boolean;
   loadingMore?: boolean;
   olderError?: string | null;
+  connectionState?: RealtimeConnectionState;
+  connectionError?: string | null;
+  typingUserIds?: string[];
   onBack: () => void;
   onRetry?: () => void;
   onLoadMore?: () => void;
   onSend?: (content: string) => Promise<void>;
+  onRetrySend?: (idempotencyKey: string) => void;
+  onTypingChange?: (typing: boolean) => void;
 }) {
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
@@ -65,6 +91,21 @@ export function ConversationPanel({
     scrollHeight: number;
     scrollTop: number;
   } | null>(null);
+  const nearBottomRef = useRef(true);
+  const previousNewestIdRef = useRef<string | null>(null);
+  const [newMessagesWaiting, setNewMessagesWaiting] = useState(false);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const handleScroll = () => {
+      nearBottomRef.current =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 96;
+      if (nearBottomRef.current) setNewMessagesWaiting(false);
+    };
+    viewport.addEventListener("scroll", handleScroll, { passive: true });
+    return () => viewport.removeEventListener("scroll", handleScroll);
+  }, [conversation?.id]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -74,6 +115,25 @@ export function ConversationPanel({
       anchor.scrollTop + (viewport.scrollHeight - anchor.scrollHeight);
     paginationAnchorRef.current = null;
   }, [loadingMore, messages.length]);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const newest = messages.at(-1);
+    if (!viewport || !newest || paginationAnchorRef.current) return;
+    const previousNewestId = previousNewestIdRef.current;
+    previousNewestIdRef.current = newest.id;
+    if (!previousNewestId || previousNewestId === newest.id) {
+      if (!previousNewestId) viewport.scrollTop = viewport.scrollHeight;
+      return;
+    }
+    if (nearBottomRef.current || newest.senderId === currentUserId) {
+      viewport.scrollTop = viewport.scrollHeight;
+      nearBottomRef.current = true;
+      setNewMessagesWaiting(false);
+    } else {
+      setNewMessagesWaiting(true);
+    }
+  }, [currentUserId, messages]);
 
   if (!conversation) {
     return (
@@ -98,9 +158,10 @@ export function ConversationPanel({
     const trimmed = content.trim();
     if (!trimmed || !onSend || sending) return;
     setSending(true);
+    setContent("");
+    onTypingChange?.(false);
     try {
       await onSend(trimmed);
-      setContent("");
     } finally {
       setSending(false);
     }
@@ -125,140 +186,201 @@ export function ConversationPanel({
           <h1 className="truncate font-semibold tracking-tight">
             {conversationTitle(conversation, currentUserId)}
           </h1>
-          <p className="text-muted-foreground text-xs">
-            {conversationDescription(conversation)}
+          <p className="text-muted-foreground truncate text-xs">
+            {typingUserIds.length > 0
+              ? typingUserIds.length === 1
+                ? `Member ${shortUserId(typingUserIds[0])} is typing…`
+                : `${typingUserIds.length} people are typing…`
+              : conversationDescription(conversation)}
           </p>
+        </div>
+        <div
+          className="text-muted-foreground ml-auto flex shrink-0 items-center gap-1.5 text-xs"
+          role="status"
+          aria-live="polite"
+          title={connectionError ?? undefined}
+        >
+          {connectionState === "connected" ? (
+            <WifiIcon className="text-primary size-3.5" />
+          ) : connectionState === "offline" ? (
+            <WifiOffIcon className="text-destructive size-3.5" />
+          ) : (
+            <LoaderCircleIcon className="size-3.5 animate-spin" />
+          )}
+          <span className="hidden sm:inline">
+            {connectionLabel(connectionState)}
+          </span>
         </div>
       </header>
 
-      <ScrollArea className="min-h-0 flex-1" viewportRef={viewportRef}>
-        {loading ? (
-          <div
-            className="mx-auto flex max-w-3xl flex-col gap-5 px-5 py-8"
-            aria-label="Loading messages"
-            role="status"
-            aria-live="polite"
-          >
-            <span className="sr-only">Loading messages</span>
-            <Skeleton className="h-16 w-3/5 rounded-2xl" />
-            <Skeleton className="ml-auto h-20 w-2/3 rounded-2xl" />
-            <Skeleton className="h-14 w-1/2 rounded-2xl" />
-          </div>
-        ) : error ? (
-          <div className="grid min-h-[55vh] place-items-center px-6 text-center">
-            <div>
-              <p className="font-medium">Couldn&apos;t load messages</p>
-              <p className="text-muted-foreground mt-1 text-sm">{error}</p>
-              {onRetry && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={onRetry}
-                >
-                  Try again
-                </Button>
-              )}
+      <div className="relative min-h-0 flex-1">
+        <ScrollArea className="h-full" viewportRef={viewportRef}>
+          {loading ? (
+            <div
+              className="mx-auto flex max-w-3xl flex-col gap-5 px-5 py-8"
+              aria-label="Loading messages"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="sr-only">Loading messages</span>
+              <Skeleton className="h-16 w-3/5 rounded-2xl" />
+              <Skeleton className="ml-auto h-20 w-2/3 rounded-2xl" />
+              <Skeleton className="h-14 w-1/2 rounded-2xl" />
             </div>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="grid min-h-[55vh] place-items-center px-6 text-center">
-            <div>
-              <p className="font-medium">No messages yet</p>
-              <p className="text-muted-foreground mt-1 text-sm">
-                Send the first message to begin this thread.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <ol className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-7 sm:px-8">
-            {hasMore && onLoadMore && (
-              <li className="mb-2 space-y-2 text-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const viewport = viewportRef.current;
-                    if (viewport) {
-                      paginationAnchorRef.current = {
-                        scrollHeight: viewport.scrollHeight,
-                        scrollTop: viewport.scrollTop,
-                      };
-                    }
-                    onLoadMore();
-                  }}
-                  disabled={loadingMore}
-                >
-                  {loadingMore ? "Loading…" : "Load older messages"}
-                </Button>
-                {olderError && (
-                  <p
-                    className="text-destructive text-xs"
-                    role="status"
-                    aria-live="polite"
+          ) : error ? (
+            <div className="grid min-h-[55vh] place-items-center px-6 text-center">
+              <div>
+                <p className="font-medium">Couldn&apos;t load messages</p>
+                <p className="text-muted-foreground mt-1 text-sm">{error}</p>
+                {onRetry && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={onRetry}
                   >
-                    {olderError} Try again.
-                  </p>
+                    Try again
+                  </Button>
                 )}
-              </li>
-            )}
-            {messages.map((message) => {
-              const own = message.senderId === currentUserId;
-              return (
-                <li
-                  key={message.id}
-                  className={
-                    own ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"
-                  }
-                >
-                  {!own && (
-                    <p className="text-muted-foreground mb-1 px-1 text-[0.7rem]">
-                      Member {shortUserId(message.senderId)}
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="grid min-h-[55vh] place-items-center px-6 text-center">
+              <div>
+                <p className="font-medium">No messages yet</p>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Send the first message to begin this thread.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <ol className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-7 sm:px-8">
+              {hasMore && onLoadMore && (
+                <li className="mb-2 space-y-2 text-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const viewport = viewportRef.current;
+                      if (viewport) {
+                        paginationAnchorRef.current = {
+                          scrollHeight: viewport.scrollHeight,
+                          scrollTop: viewport.scrollTop,
+                        };
+                      }
+                      onLoadMore();
+                    }}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? "Loading…" : "Load older messages"}
+                  </Button>
+                  {olderError && (
+                    <p
+                      className="text-destructive text-xs"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {olderError} Try again.
                     </p>
                   )}
-                  <div
+                </li>
+              )}
+              {messages.map((message) => {
+                const own = message.senderId === currentUserId;
+                return (
+                  <li
+                    key={message.id}
                     className={
-                      own
-                        ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5"
-                        : "bg-muted rounded-2xl rounded-bl-md px-4 py-2.5"
+                      own ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"
                     }
                   >
-                    <p
-                      className={
-                        message.deletedAt
-                          ? "text-sm italic opacity-70"
-                          : "text-sm leading-6 whitespace-pre-wrap"
-                      }
-                    >
-                      {message.deletedAt ? "Message deleted" : message.content}
-                    </p>
-                    <p
+                    {!own && (
+                      <p className="text-muted-foreground mb-1 px-1 text-[0.7rem]">
+                        Member {shortUserId(message.senderId)}
+                      </p>
+                    )}
+                    <div
                       className={
                         own
-                          ? "text-primary-foreground/65 mt-1 text-right text-[0.65rem]"
-                          : "text-muted-foreground mt-1 text-right text-[0.65rem]"
+                          ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5"
+                          : "bg-muted rounded-2xl rounded-bl-md px-4 py-2.5"
                       }
                     >
-                      {formatTime(message.createdAt)}
-                      {message.editedAt ? " · edited" : ""}
-                      {own && conversation.type === "DIRECT"
-                        ? ` · ${message.status.toLowerCase()}`
-                        : ""}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
+                      <p
+                        className={
+                          message.deletedAt
+                            ? "text-sm italic opacity-70"
+                            : "text-sm leading-6 whitespace-pre-wrap"
+                        }
+                      >
+                        {message.deletedAt
+                          ? "Message deleted"
+                          : message.content}
+                      </p>
+                      <p
+                        className={
+                          own
+                            ? "text-primary-foreground/65 mt-1 text-right text-[0.65rem]"
+                            : "text-muted-foreground mt-1 text-right text-[0.65rem]"
+                        }
+                      >
+                        {formatTime(message.createdAt)}
+                        {message.editedAt ? " · edited" : ""}
+                        {own
+                          ? message.clientState === "sending"
+                            ? " · sending…"
+                            : message.clientState === "failed"
+                              ? " · failed"
+                              : conversation.type === "DIRECT"
+                                ? ` · ${message.status.toLowerCase()}`
+                                : ""
+                          : ""}
+                      </p>
+                      {message.clientState === "failed" && onRetrySend && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="text-primary-foreground mt-1 ml-auto flex hover:bg-white/15 hover:text-white"
+                          onClick={() => onRetrySend(message.idempotencyKey)}
+                          title={message.clientError}
+                        >
+                          <RotateCcwIcon /> Retry
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </ScrollArea>
+        {newMessagesWaiting && (
+          <Button
+            type="button"
+            size="sm"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full shadow-lg"
+            onClick={() => {
+              const viewport = viewportRef.current;
+              if (viewport) viewport.scrollTop = viewport.scrollHeight;
+              nearBottomRef.current = true;
+              setNewMessagesWaiting(false);
+            }}
+          >
+            <ArrowDownIcon /> New messages
+          </Button>
         )}
-      </ScrollArea>
+      </div>
 
       {onSend && (
         <form onSubmit={submit} className="border-t p-3 sm:p-5">
           <div className="bg-muted/70 mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border p-2 shadow-sm">
             <Textarea
               value={content}
-              onChange={(event) => setContent(event.target.value)}
+              onChange={(event) => {
+                setContent(event.target.value);
+                onTypingChange?.(Boolean(event.target.value.trim()));
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();

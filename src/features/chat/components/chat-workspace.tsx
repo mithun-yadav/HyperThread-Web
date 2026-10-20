@@ -9,8 +9,11 @@ import { SignOutButton } from "@/features/auth/components/sign-out-button";
 import type {
   Conversation,
   CreateConversationInput,
-  Message,
 } from "@/features/chat/chat-contract";
+import type {
+  ClientMessage,
+  RealtimeConnectionState,
+} from "@/features/chat/realtime/chat-realtime-contract";
 import { ConversationList } from "@/features/chat/components/conversation-list";
 import { ConversationPanel } from "@/features/chat/components/conversation-panel";
 import { CreateConversationDialog } from "@/features/chat/components/create-conversation-dialog";
@@ -21,7 +24,7 @@ export type ChatWorkspaceProps = {
   conversations: Conversation[];
   conversationsLoading?: boolean;
   conversationsError?: string | null;
-  messages?: Message[];
+  messages?: ClientMessage[];
   messagesLoading?: boolean;
   messagesError?: string | null;
   hasOlderMessages?: boolean;
@@ -31,10 +34,16 @@ export type ChatWorkspaceProps = {
   onRetryMessages?: () => void;
   onLoadOlderMessages?: () => void;
   onConversationChange?: (conversation: Conversation) => void;
+  onConversationClose?: () => void;
   onCreateConversation?: (
     input: CreateConversationInput,
   ) => Promise<Conversation>;
   onSendMessage?: (conversationId: string, content: string) => Promise<void>;
+  onRetrySendMessage?: (idempotencyKey: string) => void;
+  onTypingChange?: (typing: boolean) => void;
+  connectionState?: RealtimeConnectionState;
+  connectionError?: string | null;
+  typingUserIds?: string[];
 };
 
 export function ChatWorkspace({
@@ -53,8 +62,14 @@ export function ChatWorkspace({
   onRetryMessages,
   onLoadOlderMessages,
   onConversationChange,
+  onConversationClose,
   onCreateConversation,
   onSendMessage,
+  onRetrySendMessage,
+  onTypingChange,
+  connectionState = "offline",
+  connectionError = null,
+  typingUserIds = [],
 }: ChatWorkspaceProps) {
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -157,9 +172,17 @@ export function ChatWorkspace({
             hasMore={hasOlderMessages}
             loadingMore={loadingOlderMessages}
             olderError={olderMessagesError}
+            connectionState={connectionState}
+            connectionError={connectionError}
+            typingUserIds={typingUserIds}
             onRetry={onRetryMessages}
             onLoadMore={onLoadOlderMessages}
-            onBack={() => setActiveId(null)}
+            onRetrySend={onRetrySendMessage}
+            onTypingChange={onTypingChange}
+            onBack={() => {
+              setActiveId(null);
+              onConversationClose?.();
+            }}
             onSend={
               activeConversation && onSendMessage
                 ? (content) => onSendMessage(activeConversation.id, content)

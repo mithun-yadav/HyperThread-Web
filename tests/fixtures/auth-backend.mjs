@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import { Server as SocketServer } from "socket.io";
 
 const refreshCounts = new Map();
 
@@ -100,12 +101,55 @@ const authServer = createServer(async (request, response) => {
 authServer.listen(4100, "127.0.0.1");
 
 const conversationsByUser = new Map();
+const realtimeMessagesByUser = new Map();
+const realtimeAttempts = new Map();
+const socketStatsByUser = new Map();
 
 function userFromAuthorization(request) {
   const token = request.headers.authorization?.replace("Bearer ", "") ?? "";
   if (token.startsWith("access-"))
     return `user-${token.slice("access-".length)}`;
   return "fixture-user";
+}
+
+function userFromSocketToken(token) {
+  if (typeof token === "string" && token.startsWith("access-")) {
+    return `user-${token.slice("access-".length)}`;
+  }
+  if (
+    typeof token === "string" &&
+    token.startsWith("rotated-access-refresh-")
+  ) {
+    return `user-${token.slice("rotated-access-refresh-".length)}`;
+  }
+  return null;
+}
+
+function realtimeKey(userId, conversationId) {
+  return `${userId}:${conversationId}`;
+}
+
+function messagesFor(userId, conversationId) {
+  const key = realtimeKey(userId, conversationId);
+  const existing = realtimeMessagesByUser.get(key);
+  if (existing) return existing;
+  const messages = [];
+  realtimeMessagesByUser.set(key, messages);
+  return messages;
+}
+
+function statsFor(userId) {
+  const existing = socketStatsByUser.get(userId);
+  if (existing) return existing;
+  const stats = {
+    connections: 0,
+    heartbeats: 0,
+    joins: [],
+    attempts: [],
+    receipts: [],
+  };
+  socketStatsByUser.set(userId, stats);
+  return stats;
 }
 
 function conversationFor(userId) {
@@ -146,6 +190,58 @@ const chatServer = createServer(async (request, response) => {
   const userId = userFromAuthorization(request);
   const conversations = conversationFor(userId);
 
+  if (request.method === "GET" && url.pathname === "/test/socket-stats") {
+    return send(response, 200, statsFor(url.searchParams.get("userId")));
+  }
+
+  if (request.method === "POST" && url.pathname === "/test/inject-message") {
+    const body = await readBody(request);
+    const message = {
+      id: randomUUID(),
+      conversationId: body.conversationId,
+      senderId: body.senderId ?? "550e8400-e29b-41d4-a716-446655440000",
+      content: body.content,
+      idempotencyKey: randomUUID(),
+      status: "SENT",
+      createdAt: new Date().toISOString(),
+      editedAt: null,
+      deletedAt: null,
+    };
+    messagesFor(body.userId, body.conversationId).push(message);
+    return send(response, 201, message);
+  }
+
+  if (request.method === "POST" && url.pathname === "/test/typing") {
+    const body = await readBody(request);
+    socketServer
+      .to(realtimeKey(body.userId, body.conversationId))
+      .emit("userTyping", {
+        conversationId: body.conversationId,
+        userId: body.typingUserId,
+      });
+    return send(response, 204, {});
+  }
+
+  if (request.method === "POST" && url.pathname === "/test/broadcast-message") {
+    const body = await readBody(request);
+    const message = messagesFor(body.userId, body.conversationId).find(
+      (candidate) => candidate.id === body.id,
+    );
+    if (!message) return send(response, 404, { message: "Not found" });
+    socketServer
+      .to(realtimeKey(body.userId, body.conversationId))
+      .emit("newMessage", message);
+    return send(response, 204, {});
+  }
+
+  if (request.method === "POST" && url.pathname === "/test/disconnect") {
+    const body = await readBody(request);
+    for (const socket of socketServer.sockets.sockets.values()) {
+      if (socket.data.userId === body.userId) socket.disconnect(true);
+    }
+    return send(response, 204, {});
+  }
+
   if (request.method === "GET" && url.pathname === "/conversations") {
     return send(response, 200, conversations);
   }
@@ -158,30 +254,38 @@ const chatServer = createServer(async (request, response) => {
     const isSeedConversation =
       conversationId === "11111111-1111-4111-8111-111111111111";
     const loadingOlderPage = url.searchParams.has("before");
+    const realtimeMessages = messagesFor(userId, conversationId);
     return send(response, 200, {
       messages: isSeedConversation
-        ? [
-            {
-              id: loadingOlderPage
-                ? "33333333-3333-4333-8333-333333333333"
-                : "22222222-2222-4222-8222-222222222222",
-              conversationId,
-              senderId: "550e8400-e29b-41d4-a716-446655440000",
-              content: loadingOlderPage
-                ? "Earlier project context"
-                : "Hello from the project room",
-              idempotencyKey: loadingOlderPage
-                ? "55555555-5555-4555-8555-555555555555"
-                : "44444444-4444-4444-8444-444444444444",
-              status: "SENT",
-              createdAt: loadingOlderPage
-                ? "2026-01-01T09:30:00.000Z"
-                : "2026-01-01T10:30:00.000Z",
-              editedAt: null,
-              deletedAt: null,
-            },
-          ]
-        : [],
+        ? loadingOlderPage
+          ? [
+              {
+                id: "33333333-3333-4333-8333-333333333333",
+                conversationId,
+                senderId: "550e8400-e29b-41d4-a716-446655440000",
+                content: "Earlier project context",
+                idempotencyKey: "55555555-5555-4555-8555-555555555555",
+                status: "SENT",
+                createdAt: "2026-01-01T09:30:00.000Z",
+                editedAt: null,
+                deletedAt: null,
+              },
+            ]
+          : [
+              {
+                id: "22222222-2222-4222-8222-222222222222",
+                conversationId,
+                senderId: "550e8400-e29b-41d4-a716-446655440000",
+                content: "Hello from the project room",
+                idempotencyKey: "44444444-4444-4444-8444-444444444444",
+                status: "SENT",
+                createdAt: "2026-01-01T10:30:00.000Z",
+                editedAt: null,
+                deletedAt: null,
+              },
+              ...realtimeMessages,
+            ]
+        : realtimeMessages,
       hasMore: isSeedConversation && !loadingOlderPage,
       nextBefore:
         isSeedConversation && !loadingOlderPage ? "older-anchor" : null,
@@ -218,9 +322,125 @@ const chatServer = createServer(async (request, response) => {
   return send(response, 404, { message: "Not found" });
 });
 
+const socketServer = new SocketServer(chatServer, {
+  cors: { origin: true, credentials: true },
+});
+
+socketServer.use((socket, next) => {
+  const userId = userFromSocketToken(socket.handshake.auth.token);
+  if (!userId) {
+    next(new Error("Unauthorized"));
+    return;
+  }
+  socket.data.userId = userId;
+  next();
+});
+
+socketServer.on("connection", (socket) => {
+  const userId = socket.data.userId;
+  const stats = statsFor(userId);
+  stats.connections += 1;
+
+  socket.on("joinConversation", (conversationId) => {
+    socket.join(realtimeKey(userId, conversationId));
+    stats.joins.push(conversationId);
+    socket.emit("joinedConversation", { conversationId });
+  });
+
+  socket.on("heartbeat", (acknowledge) => {
+    stats.heartbeats += 1;
+    if (typeof acknowledge === "function") {
+      acknowledge({ event: "heartbeat", data: { status: "ok" } });
+    }
+  });
+
+  socket.on("sendMessage", (payload, acknowledge) => {
+    stats.attempts.push({ ...payload });
+    const attemptKey = `${userId}:${payload.idempotencyKey}`;
+    const attempt = (realtimeAttempts.get(attemptKey) ?? 0) + 1;
+    realtimeAttempts.set(attemptKey, attempt);
+    if (payload.content === "Retry this safely" && attempt === 1) {
+      socket.emit("exception", {
+        errorCode: "INTERNAL_ERROR",
+        message: "Temporary realtime failure.",
+      });
+      return;
+    }
+
+    const messages = messagesFor(userId, payload.conversationId);
+    let message = messages.find(
+      (candidate) => candidate.idempotencyKey === payload.idempotencyKey,
+    );
+    if (!message) {
+      message = {
+        id: randomUUID(),
+        conversationId: payload.conversationId,
+        senderId: userId,
+        content: payload.content,
+        idempotencyKey: payload.idempotencyKey,
+        status: "SENT",
+        createdAt: new Date().toISOString(),
+        editedAt: null,
+        deletedAt: null,
+      };
+      messages.push(message);
+    }
+    if (payload.content === "Persist during disconnect" && attempt === 1) {
+      socket.disconnect(true);
+      return;
+    }
+    acknowledge(message);
+    socketServer
+      .to(realtimeKey(userId, payload.conversationId))
+      .emit("newMessage", message);
+  });
+
+  socket.on("typing", (conversationId) => {
+    socket
+      .to(realtimeKey(userId, conversationId))
+      .emit("userTyping", { conversationId, userId });
+  });
+  socket.on("stopTyping", (conversationId) => {
+    socket
+      .to(realtimeKey(userId, conversationId))
+      .emit("userStoppedTyping", { conversationId, userId });
+  });
+  socket.on("acknowledgeDelivery", (messageId) => {
+    stats.receipts.push({ type: "delivery", messageId });
+    for (const [key, messages] of realtimeMessagesByUser) {
+      if (!key.startsWith(`${userId}:`)) continue;
+      const message = messages.find((candidate) => candidate.id === messageId);
+      if (!message) continue;
+      message.status = "DELIVERED";
+      socketServer.to(key).emit("messageDelivered", {
+        messageId,
+        conversationId: message.conversationId,
+        senderId: message.senderId,
+        status: message.status,
+      });
+    }
+  });
+  socket.on("acknowledgeRead", (messageId) => {
+    stats.receipts.push({ type: "read", messageId });
+    for (const [key, messages] of realtimeMessagesByUser) {
+      if (!key.startsWith(`${userId}:`)) continue;
+      const message = messages.find((candidate) => candidate.id === messageId);
+      if (!message) continue;
+      message.status = "READ";
+      socketServer.to(key).emit("messageRead", {
+        messageId,
+        conversationId: message.conversationId,
+        senderId: message.senderId,
+        status: message.status,
+      });
+    }
+  });
+});
+
 chatServer.listen(4101, "127.0.0.1");
 
 function close() {
+  socketServer.disconnectSockets(true);
   let openServers = 2;
   const closed = () => {
     openServers -= 1;

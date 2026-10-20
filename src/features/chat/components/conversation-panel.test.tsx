@@ -153,4 +153,52 @@ describe("ConversationPanel", () => {
     );
     expect(viewport!.scrollTop).toBe(400);
   });
+
+  it("shows honest realtime state, typing, and exact failed-message retry", async () => {
+    const onRetry = vi.fn();
+    render(
+      <ConversationPanel
+        conversation={{ ...conversation, type: "DIRECT", name: null }}
+        currentUserId="current-user"
+        messages={[
+          {
+            ...message,
+            clientState: "failed",
+            clientError: "Connection lost",
+          },
+        ]}
+        loading={false}
+        connectionState="reconnecting"
+        typingUserIds={["peer-user"]}
+        onBack={vi.fn()}
+        onRetrySend={onRetry}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Reconnecting");
+    expect(screen.getByText(/Member peer-user is typing/)).toBeVisible();
+    expect(screen.getByText(/· failed/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledWith(message.idempotencyKey);
+  });
+
+  it("publishes typing state and stops it after a successful send", async () => {
+    const onTypingChange = vi.fn();
+    render(
+      <ConversationPanel
+        conversation={conversation}
+        currentUserId="current-user"
+        messages={[]}
+        loading={false}
+        onBack={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(undefined)}
+        onTypingChange={onTypingChange}
+      />,
+    );
+    const composer = screen.getByRole("textbox", { name: "Message" });
+    await userEvent.type(composer, "Hello");
+    expect(onTypingChange).toHaveBeenLastCalledWith(true);
+    await userEvent.keyboard("{Enter}");
+    expect(onTypingChange).toHaveBeenLastCalledWith(false);
+  });
 });

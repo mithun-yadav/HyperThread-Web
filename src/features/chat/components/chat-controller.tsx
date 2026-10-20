@@ -20,6 +20,8 @@ import type {
   CreateConversationInput,
 } from "@/features/chat/chat-contract";
 import { ChatWorkspace } from "@/features/chat/components/chat-workspace";
+import type { ClientMessage } from "@/features/chat/realtime/chat-realtime-contract";
+import { useChatRealtime } from "@/features/chat/realtime/use-chat-realtime";
 import { ApiClientError } from "@/lib/api/client";
 
 function errorMessage(reason: unknown) {
@@ -69,6 +71,27 @@ export function ChatController({ session }: { session: AuthSession }) {
         .flatMap((page) => page.messages),
     [messagesQuery.data],
   );
+  const realtime = useChatRealtime({
+    session,
+    conversations: conversationsQuery.data ?? [],
+    activeConversationId,
+    messages,
+  });
+  const displayMessages = useMemo<ClientMessage[]>(
+    () =>
+      [
+        ...messages,
+        ...realtime.outbox.filter(
+          (message) => message.conversationId === activeConversationId,
+        ),
+      ].sort((left, right) => {
+        const timeDifference =
+          new Date(left.createdAt).getTime() -
+          new Date(right.createdAt).getTime();
+        return timeDifference || left.id.localeCompare(right.id);
+      }),
+    [activeConversationId, messages, realtime.outbox],
+  );
 
   const sessionExpired = [
     conversationsQuery.error,
@@ -99,7 +122,7 @@ export function ChatController({ session }: { session: AuthSession }) {
           ? errorMessage(conversationsQuery.error)
           : null
       }
-      messages={messages}
+      messages={displayMessages}
       messagesLoading={Boolean(activeConversationId) && messagesQuery.isPending}
       messagesError={
         messages.length === 0 && messagesQuery.isError
@@ -119,7 +142,17 @@ export function ChatController({ session }: { session: AuthSession }) {
       onConversationChange={(conversation) =>
         setActiveConversationId(conversation.id)
       }
+      onConversationClose={() => setActiveConversationId(null)}
       onCreateConversation={handleCreate}
+      connectionState={realtime.connectionState}
+      connectionError={realtime.connectionError}
+      typingUserIds={realtime.typingUserIds}
+      onSendMessage={realtime.sendMessage}
+      onRetrySendMessage={realtime.retryMessage}
+      onTypingChange={(typing) => {
+        if (activeConversationId)
+          realtime.setTyping(activeConversationId, typing);
+      }}
     />
   );
 }

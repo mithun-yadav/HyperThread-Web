@@ -72,12 +72,14 @@ describe("ChatWorkspace", () => {
 
   it("opens a conversation and supports mobile back navigation", async () => {
     const onChange = vi.fn();
+    const onClose = vi.fn();
     renderWorkspace(
       <ChatWorkspace
         currentUserId="current-user"
         username="mithun"
         conversations={[conversation]}
         onConversationChange={onChange}
+        onConversationClose={onClose}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: /Design crew/ }));
@@ -89,6 +91,7 @@ describe("ChatWorkspace", () => {
       screen.getByRole("button", { name: "Back to conversations" }),
     );
     expect(screen.getByRole("heading", { name: "Messages" })).toBeVisible();
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("filters loaded conversations without fabricating results", async () => {
