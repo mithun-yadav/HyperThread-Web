@@ -9,10 +9,11 @@ handlers proxy the two backend services and own authentication cookies.
 
 This BFF boundary is required because the backend returns access and refresh
 tokens in JSON and offers no cookie flow. The frontend stores both tokens in
-secure, HttpOnly, same-site cookies. A same-origin socket-token route returns
-only the current short-lived access token to authenticated JavaScript memory so
-Socket.IO can complete its required handshake. Refresh tokens are never exposed
-to client code or persisted in browser storage.
+HttpOnly, SameSite cookies that also use the `Secure` flag in production. A
+same-origin socket-token route returns only the current short-lived access token
+to authenticated JavaScript memory so Socket.IO can complete its required
+handshake. Refresh tokens are never exposed to client code or persisted in
+browser storage.
 
 The frontend repository began as an empty, unborn `main` branch with no package
 manager, framework, tests, dependencies, or reusable source files. The project
@@ -25,7 +26,7 @@ therefore adopts pnpm to match the backend workspace and runs locally on port
 app/
   (auth)/login
   (auth)/register
-  (app)/chat
+  chat
   session/restore
   api/auth/{login,register,logout,session,socket-token}
   api/auth/session/refresh
@@ -46,18 +47,22 @@ the socket; it cannot revoke the backend session because no endpoint exists.
 ```text
 src/
   components/ui/        reusable controls and feedback
-  features/auth/        forms, validation, session query
-  features/chat/        shell, list, timeline, composer, dialogs
-  lib/api/              browser API helpers and query keys
-  lib/auth/             server-only cookies, refresh, proxy helpers
-  lib/realtime/         one controlled Socket.IO client and cache events
-  types/                verified backend contract types
+  features/auth/        forms, validation, and session restoration
+  features/chat/        contracts, HTTP state, shell, timeline, dialogs
+  features/chat/realtime/
+                        controlled Socket.IO client and cache reconciliation
+  lib/api/              browser API helper and auth retry
+  lib/auth/             server-only cookies, session, refresh, proxy helpers
+  lib/env/              validated public and server environment access
+  lib/http/             safe backend response handling
+  providers/            query, theme, tooltip, and toast providers
+  proxy.ts              protected-page verification and restore redirect
 ```
 
 - Server Components own page metadata and static layout when practical.
 - Client Components own forms, TanStack Query state, responsive navigation,
   composer state, and realtime subscriptions.
-- Contract types live in one module and mirror verified backend shapes.
+- Feature-local contract modules mirror the verified backend shapes.
 - `AppProviders` owns one QueryClient per browser lifecycle.
 
 ## HTTP and refresh flow
@@ -85,7 +90,8 @@ directly.
 ## Server and realtime state
 
 TanStack Query owns conversations and paginated message history. Query keys are
-stable and feature-scoped. Socket events update or invalidate the smallest
+stable, feature-scoped, and include the authenticated user ID so data cannot
+cross account boundaries. Socket events update or invalidate the smallest
 relevant caches:
 
 - `newMessage`: insert by message ID if absent.
@@ -95,9 +101,9 @@ relevant caches:
 
 The Socket.IO instance is created once per authenticated chat shell, uses an
 in-memory access token, removes every listener during cleanup, and reconnects
-with bounded Socket.IO backoff. A 20-second heartbeat maintains the backend's
-30-second presence TTL. The frontend never displays presence because the
-backend does not expose it.
+with a bounded custom exponential backoff. A 20-second heartbeat maintains the
+backend's 30-second presence TTL. The frontend never displays presence because
+the backend does not expose it.
 
 Sending uses Socket.IO with a UUID idempotency key and an acknowledgement
 timeout. A pending message is explicit local state and is replaced by the raw
@@ -112,9 +118,14 @@ their idempotency key for exact retry.
 - Direct chat titles fall back to a shortened participant UUID because no public
   profile endpoint exists. Group names are shown verbatim.
 - Conversation search filters only already-loaded supported fields.
-- No fake unread counts, last-message previews, avatars, timestamps, or online
-  states.
+- No fake unread counts, last-message previews, avatars, conversation-list
+  timestamps, or online states.
 - Empty, loading, error, offline, and retry states are first-class.
+- Long timelines remain bounded to the visual viewport; the message history
+  scrolls independently while the header and composer stay available.
+- Light, dark, and system appearance choices persist through `next-themes`.
+- Coarse-pointer controls receive at least a 40px hit area, and tall mobile
+  dialogs scroll within the viewport.
 - Motion respects `prefers-reduced-motion`; all menus/dialogs are keyboard and
   screen-reader usable.
 
@@ -122,8 +133,9 @@ their idempotency key for exact retry.
 
 - Vitest and Testing Library for contract parsing, API helpers, authentication
   forms, timeline reconciliation, and socket event reducers.
-- Playwright for login/register routing, responsive chat navigation, composer
-  behavior, and core accessibility smoke checks using mocked same-origin APIs.
+- Playwright for login/register routing, secure session behavior, responsive
+  navigation, long timelines, realtime reconnect/retry, theme persistence, and
+  axe accessibility scans using a contract-faithful local backend fixture.
 - Every milestone runs typecheck, lint, focused tests, and production build when
   applicable.
 - UI milestones are checked in the browser at desktop and mobile widths against
@@ -138,4 +150,4 @@ their idempotency key for exact retry.
 5. `feat: integrate conversation and message APIs`
 6. `feat: add realtime messaging lifecycle`
 7. `fix: harden accessibility and product states`
-8. `test: verify end-to-end messaging workflows`
+8. `docs: finalize setup and verification guidance`
