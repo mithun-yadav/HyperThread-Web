@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { Server as SocketServer } from "socket.io";
 
 const refreshCounts = new Map();
+const logoutCounts = new Map();
 
 function send(response, status, body, contentType = "application/json") {
   response.writeHead(status, { "content-type": contentType });
@@ -23,6 +24,12 @@ const authServer = createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/test/stats") {
     return send(response, 200, {
       refreshCount: refreshCounts.get(url.searchParams.get("token")) ?? 0,
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/test/logout-stats") {
+    return send(response, 200, {
+      logoutCount: logoutCounts.get(url.searchParams.get("userId")) ?? 0,
     });
   }
 
@@ -93,6 +100,21 @@ const authServer = createServer(async (request, response) => {
       accessToken: `rotated-access-${refreshToken}`,
       refreshToken: `${refreshToken}-rotated`,
     });
+  }
+
+  if (request.method === "POST" && url.pathname === "/auth/logout") {
+    const { refreshToken } = await readBody(request);
+    if (!refreshToken || !refreshToken.startsWith("refresh-")) {
+      return send(response, 401, {
+        errorCode: "AUTH_INVALID_REFRESH_TOKEN",
+        message: "Invalid refresh token",
+      });
+    }
+    const userId = `user-${refreshToken.slice("refresh-".length)}`;
+    logoutCounts.set(userId, (logoutCounts.get(userId) ?? 0) + 1);
+    response.writeHead(204);
+    response.end();
+    return;
   }
 
   return send(response, 404, { message: "Not found" });

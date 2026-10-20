@@ -64,6 +64,10 @@ test("creates a hardened session and signs out from the chat shell", async ({
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);
+  const logoutStats = await page.request.get(
+    `http://127.0.0.1:4100/test/logout-stats?userId=${encodeURIComponent(`user-${username}`)}`,
+  );
+  expect(await logoutStats.json()).toEqual({ logoutCount: 1 });
   const remainingNames = (await context.cookies()).map((cookie) => cookie.name);
   for (const name of sessionCookieNames)
     expect(remainingNames).not.toContain(name);

@@ -52,6 +52,14 @@ export async function registerWithBackend(input: RegisterInput) {
   return result.data;
 }
 
+export async function logoutWithBackend(refreshToken: string) {
+  const response = await postAuth("/auth/logout", { refreshToken });
+  await throwForBackendError(
+    response,
+    "The server session could not be revoked.",
+  );
+}
+
 export async function verifyAccessWithBackend(
   accessToken: string,
   expectedUserId?: string,
