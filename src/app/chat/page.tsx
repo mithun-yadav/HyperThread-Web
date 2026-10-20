@@ -1,7 +1,14 @@
-import { FoundationShell } from "@/features/chat/components/foundation-shell";
+import { ChatWorkspace } from "@/features/chat/components/chat-workspace";
 import { readSession } from "@/lib/auth/session";
 
 export default async function ChatFoundationPage() {
   const session = await readSession();
-  return <FoundationShell username={session?.username} />;
+  if (!session) return null;
+  return (
+    <ChatWorkspace
+      currentUserId={session.userId}
+      username={session.username}
+      conversations={[]}
+    />
+  );
 }

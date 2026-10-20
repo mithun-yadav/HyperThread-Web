@@ -1,0 +1,76 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import type { Conversation, Message } from "@/features/chat/chat-contract";
+import { ConversationPanel } from "./conversation-panel";
+
+const conversation: Conversation = {
+  id: "conversation-1",
+  type: "GROUP",
+  name: "Design crew",
+  directKey: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  members: [],
+};
+
+const message: Message = {
+  id: "message-1",
+  conversationId: conversation.id,
+  senderId: "current-user",
+  content: "Hello crew",
+  idempotencyKey: "key-1",
+  status: "READ",
+  createdAt: "2026-01-01T10:30:00.000Z",
+  editedAt: null,
+  deletedAt: null,
+};
+
+describe("ConversationPanel", () => {
+  it("does not present group status as a per-member receipt", () => {
+    render(
+      <ConversationPanel
+        conversation={conversation}
+        currentUserId="current-user"
+        messages={[message]}
+        loading={false}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Hello crew")).toBeVisible();
+    expect(screen.queryByText(/· read/)).toBeNull();
+  });
+
+  it("trims and sends a message with Enter", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ConversationPanel
+        conversation={{ ...conversation, type: "DIRECT", name: null }}
+        currentUserId="current-user"
+        messages={[]}
+        loading={false}
+        onBack={vi.fn()}
+        onSend={onSend}
+      />,
+    );
+    const composer = screen.getByRole("textbox", { name: "Message" });
+    await userEvent.type(composer, "  Hello there  {enter}");
+    expect(onSend).toHaveBeenCalledWith("Hello there");
+    expect(composer).toHaveValue("");
+  });
+
+  it("announces message loading", () => {
+    render(
+      <ConversationPanel
+        conversation={conversation}
+        currentUserId="current-user"
+        messages={[]}
+        loading
+        onBack={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("status", { name: "Loading messages" }),
+    ).toBeVisible();
+  });
+});
