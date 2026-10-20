@@ -167,3 +167,80 @@ test("does not rotate in both Proxy and the socket-token route", async ({
   );
   expect(await stats.json()).toEqual({ refreshCount: 1 });
 });
+
+test("loads conversations and creates a direct thread through the BFF", async ({
+  page,
+}, testInfo) => {
+  const username = `chat_${testInfo.project.name}_${Date.now()}`;
+  await page.goto("/login");
+  await page.getByLabel("Email or username").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(
+    page.getByRole("button", { name: /Project room/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Project room/ }).click();
+  await expect(page.getByText("Hello from the project room")).toBeVisible();
+  await page.getByRole("button", { name: "Load older messages" }).click();
+  await expect(page.getByText("Earlier project context")).toBeVisible();
+  const timeline = await page.locator("ol > li").allTextContents();
+  expect(timeline.join(" ").indexOf("Earlier project context")).toBeLessThan(
+    timeline.join(" ").indexOf("Hello from the project room"),
+  );
+
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Back to conversations" }).click();
+  }
+  await page.getByRole("button", { name: "New conversation" }).click();
+  await page
+    .getByLabel("Recipient user ID")
+    .fill("550e8400-e29b-41d4-a716-446655440000");
+  await page.getByRole("button", { name: "Create conversation" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Member 550e84…0000" }),
+  ).toBeVisible();
+  await expect(page.getByText("No messages yet")).toBeVisible();
+
+  const invalidPayload = await page.request.post(
+    "/api/chat/conversations/direct",
+    { data: { recipientId: "not-a-uuid" } },
+  );
+  expect(invalidPayload.status()).toBe(400);
+  expect(invalidPayload.headers()["cache-control"]).toContain("no-store");
+});
+
+test("isolates conversation caches across account changes", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${testInfo.project.name}_${Date.now()}`;
+  const firstUsername = `cache_a_${suffix}`;
+  const secondUsername = `cache_b_${suffix}`;
+  const privateRecipient = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
+
+  await page.goto("/login");
+  await page.getByLabel("Email or username").fill(firstUsername);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "New conversation" }).click();
+  await page.getByLabel("Recipient user ID").fill(privateRecipient);
+  await page.getByRole("button", { name: "Create conversation" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Member 6ba7b8…30c8" }),
+  ).toBeVisible();
+
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Back to conversations" }).click();
+  }
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Email or username").fill(secondUsername);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(
+    page.getByRole("button", { name: /Project room/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Member 6ba7b8…30c8/ }),
+  ).toHaveCount(0);
+});

@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "@/features/chat/chat-contract";
 import { ChatWorkspace } from "./chat-workspace";
@@ -7,6 +8,18 @@ import { ChatWorkspace } from "./chat-workspace";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
 }));
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function renderWorkspace(ui: React.ReactNode) {
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 const conversation: Conversation = {
   id: "conversation-1",
@@ -46,7 +59,7 @@ const secondConversation: Conversation = {
 
 describe("ChatWorkspace", () => {
   it("renders an honest empty state", () => {
-    render(
+    renderWorkspace(
       <ChatWorkspace
         currentUserId="current-user"
         username="mithun"
@@ -59,7 +72,7 @@ describe("ChatWorkspace", () => {
 
   it("opens a conversation and supports mobile back navigation", async () => {
     const onChange = vi.fn();
-    render(
+    renderWorkspace(
       <ChatWorkspace
         currentUserId="current-user"
         username="mithun"
@@ -79,7 +92,7 @@ describe("ChatWorkspace", () => {
   });
 
   it("filters loaded conversations without fabricating results", async () => {
-    render(
+    renderWorkspace(
       <ChatWorkspace
         currentUserId="current-user"
         username="mithun"
@@ -97,7 +110,7 @@ describe("ChatWorkspace", () => {
   });
 
   it("resets a draft when the active conversation changes", async () => {
-    render(
+    renderWorkspace(
       <ChatWorkspace
         currentUserId="current-user"
         username="mithun"
@@ -118,7 +131,7 @@ describe("ChatWorkspace", () => {
 
   it("exposes retry and loading feedback", async () => {
     const retry = vi.fn();
-    const { rerender } = render(
+    const { rerender } = renderWorkspace(
       <ChatWorkspace
         currentUserId="current-user"
         username="mithun"

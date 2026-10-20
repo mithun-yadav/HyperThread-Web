@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 export function SignOutButton() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
 
   async function signOut() {
@@ -15,6 +17,7 @@ export function SignOutButton() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
+      queryClient.removeQueries({ queryKey: ["chat"] });
       router.replace("/login");
       router.refresh();
     }

@@ -63,11 +63,14 @@ export function CreateConversationDialog({
       );
       return;
     }
+    const normalizedCurrentUserId = currentUserId.toLowerCase();
     if (
       (parsed.data.type === "DIRECT" &&
-        parsed.data.recipientId === currentUserId) ||
+        parsed.data.recipientId.toLowerCase() === normalizedCurrentUserId) ||
       (parsed.data.type === "GROUP" &&
-        parsed.data.memberIds.includes(currentUserId))
+        parsed.data.memberIds.some(
+          (memberId) => memberId.toLowerCase() === normalizedCurrentUserId,
+        ))
     ) {
       setError("Use IDs for other users; your own ID is added automatically.");
       return;

@@ -23,7 +23,7 @@ describe("CreateConversationDialog", () => {
     );
     await userEvent.type(
       screen.getByLabelText("Recipient user ID"),
-      currentUserId,
+      currentUserId.toUpperCase(),
     );
     await userEvent.click(
       screen.getByRole("button", { name: "Create conversation" }),

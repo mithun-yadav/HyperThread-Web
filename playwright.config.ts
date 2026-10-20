@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  fullyParallel: false,
+  workers: 1,
   use: {
     baseURL: "http://localhost:5000",
     trace: "on-first-retry",
@@ -15,7 +16,7 @@ export default defineConfig({
     },
     {
       command:
-        "env AUTH_SERVICE_URL=http://127.0.0.1:4100 CHAT_SERVICE_URL=http://127.0.0.1:4001 pnpm dev",
+        "env AUTH_SERVICE_URL=http://127.0.0.1:4100 CHAT_SERVICE_URL=http://127.0.0.1:4101 pnpm dev",
       url: "http://localhost:5000",
       reuseExistingServer: true,
     },

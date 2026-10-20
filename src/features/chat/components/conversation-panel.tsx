@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowLeftIcon,
   MessageCircleMoreIcon,
@@ -36,18 +36,44 @@ export function ConversationPanel({
   currentUserId,
   messages,
   loading,
+  error,
+  hasMore,
+  loadingMore,
+  olderError,
   onBack,
+  onRetry,
+  onLoadMore,
   onSend,
 }: {
   conversation: Conversation | null;
   currentUserId: string;
   messages: Message[];
   loading: boolean;
+  error?: string | null;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  olderError?: string | null;
   onBack: () => void;
+  onRetry?: () => void;
+  onLoadMore?: () => void;
   onSend?: (content: string) => Promise<void>;
 }) {
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const paginationAnchorRef = useRef<{
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const anchor = paginationAnchorRef.current;
+    if (!viewport || !anchor || loadingMore) return;
+    viewport.scrollTop =
+      anchor.scrollTop + (viewport.scrollHeight - anchor.scrollHeight);
+    paginationAnchorRef.current = null;
+  }, [loadingMore, messages.length]);
 
   if (!conversation) {
     return (
@@ -105,7 +131,7 @@ export function ConversationPanel({
         </div>
       </header>
 
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1" viewportRef={viewportRef}>
         {loading ? (
           <div
             className="mx-auto flex max-w-3xl flex-col gap-5 px-5 py-8"
@@ -118,6 +144,23 @@ export function ConversationPanel({
             <Skeleton className="ml-auto h-20 w-2/3 rounded-2xl" />
             <Skeleton className="h-14 w-1/2 rounded-2xl" />
           </div>
+        ) : error ? (
+          <div className="grid min-h-[55vh] place-items-center px-6 text-center">
+            <div>
+              <p className="font-medium">Couldn&apos;t load messages</p>
+              <p className="text-muted-foreground mt-1 text-sm">{error}</p>
+              {onRetry && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={onRetry}
+                >
+                  Try again
+                </Button>
+              )}
+            </div>
+          </div>
         ) : messages.length === 0 ? (
           <div className="grid min-h-[55vh] place-items-center px-6 text-center">
             <div>
@@ -129,6 +172,36 @@ export function ConversationPanel({
           </div>
         ) : (
           <ol className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-7 sm:px-8">
+            {hasMore && onLoadMore && (
+              <li className="mb-2 space-y-2 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const viewport = viewportRef.current;
+                    if (viewport) {
+                      paginationAnchorRef.current = {
+                        scrollHeight: viewport.scrollHeight,
+                        scrollTop: viewport.scrollTop,
+                      };
+                    }
+                    onLoadMore();
+                  }}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading…" : "Load older messages"}
+                </Button>
+                {olderError && (
+                  <p
+                    className="text-destructive text-xs"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {olderError} Try again.
+                  </p>
+                )}
+              </li>
+            )}
             {messages.map((message) => {
               const own = message.senderId === currentUserId;
               return (

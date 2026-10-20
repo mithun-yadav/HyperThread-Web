@@ -23,9 +23,17 @@ export type ChatWorkspaceProps = {
   conversationsError?: string | null;
   messages?: Message[];
   messagesLoading?: boolean;
+  messagesError?: string | null;
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  olderMessagesError?: string | null;
   onRetryConversations?: () => void;
+  onRetryMessages?: () => void;
+  onLoadOlderMessages?: () => void;
   onConversationChange?: (conversation: Conversation) => void;
-  onCreateConversation?: (input: CreateConversationInput) => Promise<void>;
+  onCreateConversation?: (
+    input: CreateConversationInput,
+  ) => Promise<Conversation>;
   onSendMessage?: (conversationId: string, content: string) => Promise<void>;
 };
 
@@ -37,7 +45,13 @@ export function ChatWorkspace({
   conversationsError = null,
   messages = [],
   messagesLoading = false,
+  messagesError = null,
+  hasOlderMessages = false,
+  loadingOlderMessages = false,
+  olderMessagesError = null,
   onRetryConversations,
+  onRetryMessages,
+  onLoadOlderMessages,
   onConversationChange,
   onCreateConversation,
   onSendMessage,
@@ -56,6 +70,11 @@ export function ChatWorkspace({
     onConversationChange?.(conversation);
   }
 
+  async function createConversation(input: CreateConversationInput) {
+    if (!onCreateConversation) return;
+    selectConversation(await onCreateConversation(input));
+  }
+
   return (
     <main className="bg-background min-h-dvh p-0 sm:p-4 lg:p-6">
       <section className="bg-card shadow-soft mx-auto grid min-h-dvh max-w-[1480px] overflow-hidden sm:min-h-[calc(100dvh-2rem)] sm:rounded-3xl sm:border lg:min-h-[calc(100dvh-3rem)] lg:grid-cols-[22rem_1fr]">
@@ -67,7 +86,7 @@ export function ChatWorkspace({
             {onCreateConversation && (
               <CreateConversationDialog
                 currentUserId={currentUserId}
-                onCreate={onCreateConversation}
+                onCreate={createConversation}
               />
             )}
           </header>
@@ -134,6 +153,12 @@ export function ChatWorkspace({
             currentUserId={currentUserId}
             messages={messages}
             loading={messagesLoading}
+            error={messagesError}
+            hasMore={hasOlderMessages}
+            loadingMore={loadingOlderMessages}
+            olderError={olderMessagesError}
+            onRetry={onRetryMessages}
+            onLoadMore={onLoadOlderMessages}
             onBack={() => setActiveId(null)}
             onSend={
               activeConversation && onSendMessage

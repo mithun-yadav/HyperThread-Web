@@ -73,4 +73,84 @@ describe("ConversationPanel", () => {
       screen.getByRole("status", { name: "Loading messages" }),
     ).toBeVisible();
   });
+
+  it("keeps retained messages visible when loading an older page fails", () => {
+    render(
+      <ConversationPanel
+        conversation={conversation}
+        currentUserId="current-user"
+        messages={[message]}
+        loading={false}
+        hasMore
+        olderError="The chat service is temporarily unavailable."
+        onBack={vi.fn()}
+        onLoadMore={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Hello crew")).toBeVisible();
+    expect(
+      screen.getByText(/chat service is temporarily unavailable/i),
+    ).toBeVisible();
+  });
+
+  it("preserves the visible scroll anchor when older messages are prepended", async () => {
+    const olderMessage = {
+      ...message,
+      id: "message-older",
+      content: "An older message",
+      createdAt: "2026-01-01T09:30:00.000Z",
+    };
+    const onLoadMore = vi.fn();
+    const { container, rerender } = render(
+      <ConversationPanel
+        conversation={conversation}
+        currentUserId="current-user"
+        messages={[message]}
+        loading={false}
+        hasMore
+        onBack={vi.fn()}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    const viewport = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    expect(viewport).not.toBeNull();
+    let scrollHeight = 500;
+    Object.defineProperty(viewport!, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    viewport!.scrollTop = 100;
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load older messages" }),
+    );
+    expect(onLoadMore).toHaveBeenCalledOnce();
+    rerender(
+      <ConversationPanel
+        conversation={conversation}
+        currentUserId="current-user"
+        messages={[message]}
+        loading={false}
+        hasMore
+        loadingMore
+        onBack={vi.fn()}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    scrollHeight = 800;
+    rerender(
+      <ConversationPanel
+        conversation={conversation}
+        currentUserId="current-user"
+        messages={[olderMessage, message]}
+        loading={false}
+        hasMore
+        onBack={vi.fn()}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    expect(viewport!.scrollTop).toBe(400);
+  });
 });

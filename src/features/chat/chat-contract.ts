@@ -36,17 +36,24 @@ export const messagePageSchema = z.object({
   nextBefore: z.string().nullable().optional(),
 });
 
+export const directConversationRequestSchema = z.object({
+  recipientId: z.uuidv4(),
+});
+
+export const groupConversationRequestSchema = z.object({
+  name: z.string().trim().min(2).max(50),
+  memberIds: z
+    .array(z.uuidv4())
+    .min(2)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "Member IDs must be unique.",
+    }),
+});
+
 export const createConversationSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("DIRECT"), recipientId: z.uuidv4() }),
-  z.object({
+  directConversationRequestSchema.extend({ type: z.literal("DIRECT") }),
+  groupConversationRequestSchema.extend({
     type: z.literal("GROUP"),
-    name: z.string().trim().min(2).max(50),
-    memberIds: z
-      .array(z.uuidv4())
-      .min(2)
-      .refine((ids) => new Set(ids).size === ids.length, {
-        message: "Member IDs must be unique.",
-      }),
   }),
 ]);
 
