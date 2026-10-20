@@ -101,11 +101,15 @@ export function CreateConversationDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="icon-lg" aria-label="New conversation">
+        <Button
+          size="icon-lg"
+          aria-label="New conversation"
+          className="chat-create-button rounded-full"
+        >
           <PlusIcon />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="chat-create-dialog max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>New conversation</DialogTitle>

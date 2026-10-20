@@ -8,7 +8,6 @@ import {
   MessageCircleMoreIcon,
   RotateCcwIcon,
   SendHorizontalIcon,
-  WifiIcon,
   WifiOffIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +28,7 @@ import type {
 } from "@/features/chat/realtime/chat-realtime-contract";
 import {
   conversationDescription,
+  conversationInitial,
   conversationTitle,
   shortUserId,
 } from "@/features/chat/conversation-display";
@@ -137,14 +137,16 @@ export function ConversationPanel({
 
   if (!conversation) {
     return (
-      <div className="hidden min-h-0 place-items-center lg:grid">
-        <Empty className="max-w-md">
+      <div className="chat-empty-state chat:grid hidden min-h-0 flex-1 place-items-center">
+        <Empty className="max-w-md border-0">
           <EmptyHeader>
-            <EmptyMedia variant="icon">
+            <EmptyMedia variant="icon" className="chat-empty-icon">
               <MessageCircleMoreIcon />
             </EmptyMedia>
-            <EmptyTitle>Select a conversation</EmptyTitle>
-            <EmptyDescription>
+            <EmptyTitle className="text-base font-semibold tracking-[-0.025em]">
+              Select a conversation
+            </EmptyTitle>
+            <EmptyDescription className="max-w-xs">
               Choose a thread from the left to open its messages.
             </EmptyDescription>
           </EmptyHeader>
@@ -169,39 +171,56 @@ export function ConversationPanel({
 
   return (
     <section
-      className="bg-card flex min-h-0 flex-1 flex-col"
+      className="chat-conversation-panel flex min-h-0 flex-1 flex-col"
       aria-label={conversationTitle(conversation, currentUserId)}
     >
-      <header className="flex h-20 shrink-0 items-center gap-3 border-b px-4 sm:px-6">
+      <header className="chat-conversation-header flex h-20 shrink-0 items-center gap-3 px-4 sm:px-6">
         <Button
           variant="ghost"
           size="icon"
           onClick={onBack}
           aria-label="Back to conversations"
-          className="lg:hidden"
+          className="chat:hidden"
         >
           <ArrowLeftIcon />
         </Button>
+        <span
+          className="chat-header-avatar hidden size-11 shrink-0 place-items-center rounded-full text-sm font-semibold sm:grid"
+          aria-hidden="true"
+        >
+          {conversationInitial(conversation, currentUserId)}
+        </span>
         <div className="min-w-0">
-          <h1 className="truncate font-semibold tracking-tight">
+          <h1 className="truncate text-[1.05rem] font-semibold tracking-[-0.025em]">
             {conversationTitle(conversation, currentUserId)}
           </h1>
-          <p className="text-muted-foreground truncate text-xs">
-            {typingUserIds.length > 0
-              ? typingUserIds.length === 1
-                ? `Member ${shortUserId(typingUserIds[0])} is typing…`
-                : `${typingUserIds.length} people are typing…`
-              : conversationDescription(conversation)}
-          </p>
+          <div className="text-muted-foreground mt-0.5 flex items-center gap-2 truncate text-xs">
+            {typingUserIds.length > 0 ? (
+              <>
+                <span>
+                  {typingUserIds.length === 1
+                    ? `Member ${shortUserId(typingUserIds[0])} is typing`
+                    : `${typingUserIds.length} people are typing`}
+                </span>
+                <span className="chat-typing-dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </>
+            ) : (
+              conversationDescription(conversation)
+            )}
+          </div>
         </div>
         <div
-          className="text-muted-foreground ml-auto flex shrink-0 items-center gap-1.5 text-xs"
+          className="text-muted-foreground ml-auto flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums"
           role="status"
           aria-live="polite"
           title={connectionError ?? undefined}
         >
           {connectionState === "connected" ? (
-            <WifiIcon className="text-primary size-3.5" aria-hidden="true" />
+            <span className="chat-online-dot" aria-hidden="true" />
           ) : connectionState === "offline" ? (
             <WifiOffIcon
               className="text-destructive size-3.5"
@@ -220,7 +239,7 @@ export function ConversationPanel({
       </header>
 
       {connectionState !== "connected" && (
-        <div className="bg-muted/70 text-muted-foreground border-b px-4 py-2 text-center text-xs">
+        <div className="chat-connection-notice text-muted-foreground px-4 py-2 text-center text-xs">
           {connectionState === "connecting"
             ? "Connecting to live messages…"
             : connectionState === "reconnecting"
@@ -270,7 +289,7 @@ export function ConversationPanel({
               </div>
             </div>
           ) : (
-            <ol className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-7 sm:px-8">
+            <ol className="flex w-full flex-col gap-5 px-4 py-7 sm:px-8 lg:px-10">
               {hasMore && onLoadMore && (
                 <li className="mb-2 space-y-2 text-center">
                   <Button
@@ -306,20 +325,18 @@ export function ConversationPanel({
                 return (
                   <li
                     key={message.id}
-                    className={
-                      own ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"
-                    }
+                    className={`chat-message-row ${own ? "ml-auto" : "mr-auto"}`}
                   >
                     {!own && (
-                      <p className="text-muted-foreground mb-1 px-1 text-[0.7rem]">
+                      <p className="text-muted-foreground mb-1.5 px-1 text-[0.7rem] font-medium">
                         Member {shortUserId(message.senderId)}
                       </p>
                     )}
                     <div
                       className={
                         own
-                          ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5"
-                          : "bg-muted rounded-2xl rounded-bl-md px-4 py-2.5"
+                          ? "chat-message-own rounded-2xl rounded-br-md px-4 py-3"
+                          : "chat-message-incoming rounded-2xl rounded-bl-md px-4 py-3"
                       }
                     >
                       <p
@@ -336,8 +353,8 @@ export function ConversationPanel({
                       <p
                         className={
                           own
-                            ? "text-primary-foreground mt-1 text-right text-[0.65rem]"
-                            : "text-muted-foreground mt-1 text-right text-[0.65rem]"
+                            ? "chat-message-time mt-1.5 text-right text-[0.65rem]"
+                            : "text-muted-foreground chat-message-time mt-1.5 text-right text-[0.65rem]"
                         }
                       >
                         {formatTime(message.createdAt)}
@@ -389,8 +406,8 @@ export function ConversationPanel({
       </div>
 
       {onSend && (
-        <form onSubmit={submit} className="border-t p-3 sm:p-5">
-          <div className="bg-muted/70 mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border p-2 shadow-sm">
+        <form onSubmit={submit} className="chat-composer-wrap p-3 sm:p-5">
+          <div className="chat-composer flex w-full items-end gap-2 rounded-2xl p-2">
             <Textarea
               value={content}
               onChange={(event) => {
@@ -407,14 +424,14 @@ export function ConversationPanel({
               aria-label="Message"
               rows={1}
               maxLength={4000}
-              className="max-h-36 min-h-10 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+              className="max-h-36 min-h-10 resize-none border-0 bg-transparent px-3 shadow-none focus-visible:ring-0"
             />
             <Button
               type="submit"
               size="icon-lg"
               disabled={!content.trim() || sending}
               aria-label="Send message"
-              className="rounded-xl"
+              className="chat-send-button rounded-xl"
             >
               <SendHorizontalIcon />
             </Button>

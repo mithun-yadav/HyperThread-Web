@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { MessageCircleMoreIcon, SearchIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,9 +40,9 @@ export function ConversationList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="relative px-5 pb-4">
+      <div className="relative px-5 pb-5">
         <SearchIcon
-          className="text-muted-foreground pointer-events-none absolute top-3 left-8 size-4"
+          className="text-muted-foreground pointer-events-none absolute top-3 left-9 size-4"
           aria-hidden="true"
         />
         <Input
@@ -49,7 +50,7 @@ export function ConversationList({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="Search conversations"
           aria-label="Search conversations"
-          className="bg-muted h-10 rounded-xl pl-10 shadow-none"
+          className="chat-search h-10 rounded-2xl border-0 pl-11 shadow-none"
         />
       </div>
 
@@ -67,8 +68,8 @@ export function ConversationList({
             ))}
           </div>
         ) : visible.length > 0 ? (
-          <div className="space-y-1 pb-5">
-            {visible.map((conversation) => {
+          <div className="space-y-1.5 pb-5">
+            {visible.map((conversation, index) => {
               const active = conversation.id === activeId;
               return (
                 <button
@@ -77,10 +78,15 @@ export function ConversationList({
                   data-conversation-id={conversation.id}
                   onClick={() => onSelect(conversation)}
                   aria-current={active ? "page" : undefined}
-                  className="hover:bg-muted aria-[current=page]:bg-primary/9 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors"
+                  className="chat-conversation-row flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left"
+                  style={
+                    {
+                      "--chat-row-index": Math.min(index, 10),
+                    } as CSSProperties
+                  }
                 >
                   <span
-                    className="bg-primary/10 text-primary grid size-11 shrink-0 place-items-center rounded-2xl text-sm font-semibold"
+                    className="chat-conversation-avatar grid size-11 shrink-0 place-items-center rounded-full text-sm font-semibold"
                     aria-hidden="true"
                   >
                     {conversationInitial(conversation, currentUserId)}
@@ -89,7 +95,7 @@ export function ConversationList({
                     <span className="block truncate text-sm font-semibold">
                       {conversationTitle(conversation, currentUserId)}
                     </span>
-                    <span className="text-muted-foreground mt-0.5 block truncate text-xs">
+                    <span className="text-muted-foreground mt-1 block truncate text-xs leading-4">
                       {conversationDescription(conversation)}
                     </span>
                   </span>

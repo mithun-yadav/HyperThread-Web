@@ -111,12 +111,12 @@ export function ChatWorkspace({
   }
 
   return (
-    <main className="bg-background h-dvh overflow-hidden p-0 sm:p-4 lg:p-6">
-      <section className="bg-card shadow-soft mx-auto grid h-full min-h-0 max-w-[1480px] overflow-hidden sm:rounded-3xl sm:border lg:grid-cols-[22rem_1fr]">
+    <main className="chat-shell h-dvh w-full overflow-hidden">
+      <section className="chat-app-shell chat:grid-cols-[22rem_minmax(0,1fr)] relative z-10 mx-auto grid h-full min-h-0 w-full overflow-hidden min-[2200px]:max-w-[2000px]">
         <aside
-          className={`${activeConversation ? "hidden lg:flex" : "flex"} bg-sidebar min-h-0 flex-col lg:border-r`}
+          className={`${activeConversation ? "chat:flex hidden" : "flex"} chat-sidebar min-h-0 flex-col`}
         >
-          <header className="flex h-24 shrink-0 items-center justify-between px-5">
+          <header className="flex h-24 shrink-0 items-center justify-between px-6">
             <Brand compact />
             {onCreateConversation && (
               <CreateConversationDialog
@@ -125,16 +125,14 @@ export function ChatWorkspace({
               />
             )}
           </header>
-          <div className="flex items-end justify-between px-6 pb-4">
+          <div className="flex items-end justify-between px-6 pb-5">
             <div>
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.15em] uppercase">
-                Workspace
-              </p>
-              <h1 className="mt-1 text-xl font-semibold tracking-tight">
+              <p className="chat-section-label">Workspace</p>
+              <h1 className="mt-1.5 text-[1.35rem] font-semibold tracking-[-0.035em]">
                 Messages
               </h1>
             </div>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground font-mono text-xs tabular-nums">
               {conversations.length}
             </span>
           </div>
@@ -170,12 +168,19 @@ export function ChatWorkspace({
             />
           )}
 
-          <div className="mt-auto border-t px-5 py-4">
-            <p className="truncate px-2 text-sm font-medium">{username}</p>
-            <p className="text-muted-foreground mb-2 truncate px-2 text-xs">
-              Signed in securely
-            </p>
-            <div className="flex items-center justify-between gap-2">
+          <div className="chat-account mt-auto px-5 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="chat-user-avatar" aria-hidden="true">
+                {username.charAt(0).toLocaleUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{username}</p>
+                <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                  Signed in securely
+                </p>
+              </div>
+            </div>
+            <div className="chat-account-actions mt-3 flex items-center justify-between gap-2">
               <SignOutButton />
               <ThemeToggle />
             </div>
@@ -183,7 +188,7 @@ export function ChatWorkspace({
         </aside>
 
         <div
-          className={`${activeConversation ? "flex" : "hidden lg:flex"} min-h-0`}
+          className={`${activeConversation ? "flex" : "chat:flex hidden"} chat-panel-switch min-h-0 min-w-0`}
         >
           <ConversationPanel
             key={activeConversation?.id ?? "no-conversation"}
