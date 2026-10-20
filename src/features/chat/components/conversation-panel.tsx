@@ -201,17 +201,33 @@ export function ConversationPanel({
           title={connectionError ?? undefined}
         >
           {connectionState === "connected" ? (
-            <WifiIcon className="text-primary size-3.5" />
+            <WifiIcon className="text-primary size-3.5" aria-hidden="true" />
           ) : connectionState === "offline" ? (
-            <WifiOffIcon className="text-destructive size-3.5" />
+            <WifiOffIcon
+              className="text-destructive size-3.5"
+              aria-hidden="true"
+            />
           ) : (
-            <LoaderCircleIcon className="size-3.5 animate-spin" />
+            <LoaderCircleIcon
+              className="size-3.5 animate-spin"
+              aria-hidden="true"
+            />
           )}
-          <span className="hidden sm:inline">
+          <span className="sr-only sm:not-sr-only">
             {connectionLabel(connectionState)}
           </span>
         </div>
       </header>
+
+      {connectionState !== "connected" && (
+        <div className="bg-muted/70 text-muted-foreground border-b px-4 py-2 text-center text-xs">
+          {connectionState === "connecting"
+            ? "Connecting to live messages…"
+            : connectionState === "reconnecting"
+              ? "Live updates paused. Reconnecting…"
+              : "Offline. You can retry failed messages when the connection returns."}
+        </div>
+      )}
 
       <div className="relative min-h-0 flex-1">
         <ScrollArea className="h-full" viewportRef={viewportRef}>
@@ -320,7 +336,7 @@ export function ConversationPanel({
                       <p
                         className={
                           own
-                            ? "text-primary-foreground/65 mt-1 text-right text-[0.65rem]"
+                            ? "text-primary-foreground mt-1 text-right text-[0.65rem]"
                             : "text-muted-foreground mt-1 text-right text-[0.65rem]"
                         }
                       >
@@ -341,7 +357,7 @@ export function ConversationPanel({
                           type="button"
                           variant="ghost"
                           size="xs"
-                          className="text-primary-foreground mt-1 ml-auto flex hover:bg-white/15 hover:text-white"
+                          className="text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground mt-1 ml-auto flex"
                           onClick={() => onRetrySend(message.idempotencyKey)}
                           title={message.clientError}
                         >

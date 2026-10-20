@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircleIcon } from "lucide-react";
 import { Brand } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
@@ -73,12 +74,31 @@ export function ChatWorkspace({
 }: ChatWorkspaceProps) {
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const focusOnReturnIdRef = useRef<string | null>(null);
   const activeConversation = useMemo(
     () =>
       conversations.find((conversation) => conversation.id === activeId) ??
       null,
     [activeId, conversations],
   );
+
+  useEffect(() => {
+    const conversationId = focusOnReturnIdRef.current;
+    if (activeId || !conversationId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const rows = document.querySelectorAll<HTMLButtonElement>(
+        "[data-conversation-id]",
+      );
+      for (const row of rows) {
+        if (row.dataset.conversationId === conversationId) {
+          row.focus();
+          break;
+        }
+      }
+      focusOnReturnIdRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeId]);
 
   function selectConversation(conversation: Conversation) {
     setActiveId(conversation.id);
@@ -91,8 +111,8 @@ export function ChatWorkspace({
   }
 
   return (
-    <main className="bg-background min-h-dvh p-0 sm:p-4 lg:p-6">
-      <section className="bg-card shadow-soft mx-auto grid min-h-dvh max-w-[1480px] overflow-hidden sm:min-h-[calc(100dvh-2rem)] sm:rounded-3xl sm:border lg:min-h-[calc(100dvh-3rem)] lg:grid-cols-[22rem_1fr]">
+    <main className="bg-background h-dvh overflow-hidden p-0 sm:p-4 lg:p-6">
+      <section className="bg-card shadow-soft mx-auto grid h-full min-h-0 max-w-[1480px] overflow-hidden sm:rounded-3xl sm:border lg:grid-cols-[22rem_1fr]">
         <aside
           className={`${activeConversation ? "hidden lg:flex" : "flex"} bg-sidebar min-h-0 flex-col lg:border-r`}
         >
@@ -155,7 +175,10 @@ export function ChatWorkspace({
             <p className="text-muted-foreground mb-2 truncate px-2 text-xs">
               Signed in securely
             </p>
-            <SignOutButton />
+            <div className="flex items-center justify-between gap-2">
+              <SignOutButton />
+              <ThemeToggle />
+            </div>
           </div>
         </aside>
 
@@ -180,6 +203,7 @@ export function ChatWorkspace({
             onRetrySend={onRetrySendMessage}
             onTypingChange={onTypingChange}
             onBack={() => {
+              focusOnReturnIdRef.current = activeConversation?.id ?? null;
               setActiveId(null);
               onConversationClose?.();
             }}

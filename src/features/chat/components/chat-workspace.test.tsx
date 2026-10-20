@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
@@ -92,6 +92,9 @@ describe("ChatWorkspace", () => {
     );
     expect(screen.getByRole("heading", { name: "Messages" })).toBeVisible();
     expect(onClose).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Design crew/ })).toHaveFocus(),
+    );
   });
 
   it("filters loaded conversations without fabricating results", async () => {

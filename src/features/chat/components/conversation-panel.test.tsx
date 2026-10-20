@@ -175,7 +175,8 @@ describe("ConversationPanel", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("Reconnecting");
+    expect(screen.getByText("Reconnecting")).toBeVisible();
+    expect(screen.getByText(/Live updates paused/)).toBeVisible();
     expect(screen.getByText(/Member peer-user is typing/)).toBeVisible();
     expect(screen.getByText(/· failed/)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));

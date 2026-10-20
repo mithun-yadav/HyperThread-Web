@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 const sessionCookieNames = [
   "ht_access",
@@ -180,8 +181,38 @@ test("loads conversations and creates a direct thread through the BFF", async ({
   await expect(
     page.getByRole("button", { name: /Project room/ }),
   ).toBeVisible();
+  const conversationId = "11111111-1111-4111-8111-111111111111";
+  await Promise.all(
+    Array.from({ length: 48 }, (_, index) =>
+      page.request.post("http://127.0.0.1:4101/test/inject-message", {
+        data: {
+          userId: `user-${username}`,
+          conversationId,
+          content: `Long timeline item ${index + 1}`,
+        },
+      }),
+    ),
+  );
   await page.getByRole("button", { name: /Project room/ }).click();
   await expect(page.getByText("Hello from the project room")).toBeVisible();
+  const layoutMetrics = await page.evaluate(() => {
+    const viewport = document.querySelector<HTMLElement>(
+      'section[aria-label="Project room"] [data-slot="scroll-area-viewport"]',
+    );
+    return {
+      documentHeight: document.documentElement.scrollHeight,
+      windowHeight: window.innerHeight,
+      viewportHeight: viewport?.clientHeight ?? 0,
+      viewportScrollHeight: viewport?.scrollHeight ?? 0,
+    };
+  });
+  expect(layoutMetrics.documentHeight).toBeLessThanOrEqual(
+    layoutMetrics.windowHeight + 1,
+  );
+  expect(layoutMetrics.viewportHeight).toBeGreaterThan(0);
+  expect(layoutMetrics.viewportScrollHeight).toBeGreaterThan(
+    layoutMetrics.viewportHeight,
+  );
   await page.getByRole("button", { name: "Load older messages" }).click();
   await expect(page.getByText("Earlier project context")).toBeVisible();
   const timeline = await page.locator("ol > li").allTextContents();
@@ -193,6 +224,22 @@ test("loads conversations and creates a direct thread through the BFF", async ({
     await page.getByRole("button", { name: "Back to conversations" }).click();
   }
   await page.getByRole("button", { name: "New conversation" }).click();
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Group", exact: true }).click();
+    for (let index = 0; index < 7; index += 1) {
+      await page.getByRole("button", { name: "Add member" }).click();
+    }
+    const dialogBox = await page.getByRole("dialog").boundingBox();
+    const viewport = page.viewportSize();
+    expect(dialogBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(dialogBox?.y).toBeGreaterThanOrEqual(0);
+    expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeLessThanOrEqual(
+      viewport?.height ?? 0,
+    );
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "New conversation" }).click();
+  }
   await page
     .getByLabel("Recipient user ID")
     .fill("550e8400-e29b-41d4-a716-446655440000");
@@ -436,4 +483,85 @@ test("acknowledges HTTP-loaded incoming direct messages as read", async ({
       };
     })
     .toEqual({ delivered: true, read: false });
+});
+
+test("has no serious accessibility violations in the core journey", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/login");
+  const loginResults = await new AxeBuilder({ page }).analyze();
+  expect(
+    loginResults.violations.filter((violation) =>
+      ["serious", "critical"].includes(violation.impact ?? ""),
+    ),
+  ).toEqual([]);
+
+  await page.getByRole("button", { name: "Choose appearance" }).click();
+  await page.getByRole("menuitemradio", { name: /Dark/ }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator('[data-aria-hidden="true"]')).toHaveCount(0);
+  const darkLoginResults = await new AxeBuilder({ page }).analyze();
+  expect(
+    darkLoginResults.violations.filter((violation) =>
+      ["serious", "critical"].includes(violation.impact ?? ""),
+    ),
+  ).toEqual([]);
+
+  const username = `a11y_${testInfo.project.name}_${Date.now()}`;
+  await page.getByLabel("Email or username").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: /Project room/ }).click();
+  await page
+    .getByRole("textbox", { name: "Message" })
+    .fill("Accessibility status check");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Accessibility status check")).toBeVisible();
+  const chatResults = await new AxeBuilder({ page })
+    .exclude("#next-logo")
+    .analyze();
+  expect(
+    chatResults.violations.filter((violation) =>
+      ["serious", "critical"].includes(violation.impact ?? ""),
+    ),
+  ).toEqual([]);
+
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Back to conversations" }).click();
+  }
+  await page.getByRole("button", { name: "Choose appearance" }).click();
+  await page.getByRole("menuitemradio", { name: /Light/ }).click();
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
+  await expect(page.locator('[data-aria-hidden="true"]')).toHaveCount(0);
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: /Project room/ }).click();
+    await expect(page.getByText("Accessibility status check")).toBeVisible();
+  }
+  const lightChatResults = await new AxeBuilder({ page })
+    .exclude("#next-logo")
+    .analyze();
+  expect(
+    lightChatResults.violations.filter((violation) =>
+      ["serious", "critical"].includes(violation.impact ?? ""),
+    ),
+  ).toEqual([]);
+});
+
+test("persists an explicit appearance preference", async ({
+  page,
+}, testInfo) => {
+  const username = `theme_${testInfo.project.name}_${Date.now()}`;
+  await page.goto("/login");
+  await page.getByLabel("Email or username").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(
+    page.getByRole("button", { name: /Project room/ }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Choose appearance" }).click();
+  await page.getByRole("menuitemradio", { name: /Dark/ }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
 });

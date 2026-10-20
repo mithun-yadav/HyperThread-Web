@@ -5,6 +5,7 @@ import {
   MessagesSquareIcon,
 } from "lucide-react";
 import { Brand } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const promises = [
   { icon: LockKeyholeIcon, text: "Tokens stay in secure, HttpOnly cookies" },
@@ -32,13 +33,13 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         </Link>
 
         <div className="relative z-10 my-auto max-w-lg py-16">
-          <p className="text-primary-foreground/70 mb-5 text-sm font-semibold tracking-[0.18em] uppercase">
+          <p className="text-primary-foreground/90 mb-5 text-sm font-semibold tracking-[0.18em] uppercase">
             Your shared conversation space
           </p>
           <p className="text-4xl leading-[1.08] font-semibold tracking-[-0.04em] text-balance xl:text-5xl">
             Keep every important thread in motion.
           </p>
-          <p className="text-primary-foreground/74 mt-6 max-w-md text-lg leading-8">
+          <p className="text-primary-foreground/90 mt-6 max-w-md text-lg leading-8">
             HyperThread brings direct and group conversations into one calm,
             secure workspace.
           </p>
@@ -55,7 +56,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           </ul>
         </div>
 
-        <p className="text-primary-foreground/62 relative z-10 text-xs">
+        <p className="text-primary-foreground/90 relative z-10 text-xs">
           Built for focused teams and trusted conversations.
         </p>
       </section>
@@ -64,6 +65,9 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <Link href="/" className="absolute top-6 left-5 sm:left-8 lg:hidden">
           <Brand compact />
         </Link>
+        <div className="absolute top-6 right-5 sm:right-8">
+          <ThemeToggle />
+        </div>
         <div className="w-full max-w-[29rem] pt-16 lg:pt-0">{children}</div>
       </section>
     </main>

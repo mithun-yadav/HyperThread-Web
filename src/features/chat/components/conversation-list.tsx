@@ -74,6 +74,7 @@ export function ConversationList({
                 <button
                   key={conversation.id}
                   type="button"
+                  data-conversation-id={conversation.id}
                   onClick={() => onSelect(conversation)}
                   aria-current={active ? "page" : undefined}
                   className="hover:bg-muted aria-[current=page]:bg-primary/9 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors"

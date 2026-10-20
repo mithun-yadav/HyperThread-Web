@@ -58,7 +58,7 @@
   --popover: oklch(0.22 0.02 277);
   --popover-foreground: oklch(0.96 0.008 277);
   --primary: oklch(0.65 0.19 281);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary-foreground: oklch(0.14 0.02 277);
   --secondary: oklch(0.28 0.025 277);
   --secondary-foreground: oklch(0.94 0.01 277);
   --muted: oklch(0.26 0.018 277);
@@ -81,7 +81,7 @@
   --sidebar: oklch(0.22 0.02 277);
   --sidebar-foreground: oklch(0.96 0.008 277);
   --sidebar-primary: oklch(0.65 0.19 281);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.14 0.02 277);
   --sidebar-accent: oklch(0.27 0.025 277);
   --sidebar-accent-foreground: oklch(0.94 0.01 277);
   --sidebar-border: oklch(0.32 0.02 277);
@@ -168,6 +168,16 @@ textarea {
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  [data-slot="button"] {
+    min-height: 2.5rem;
+  }
+
+  [data-slot="button"][data-size^="icon"] {
+    min-width: 2.5rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
