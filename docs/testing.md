@@ -10,8 +10,10 @@ Vitest, and the production Next.js build.
 - Vitest: pure contract transforms, state reducers, API helpers, and components.
 - Testing Library: keyboard, form validation, accessible labels, and user-visible
   state transitions.
-- Playwright: public authentication routes, protected routing, responsive chat
-  navigation, composer behavior, and accessibility smoke checks.
+- Playwright: public authentication routes, protected routing, secure cookie
+  behavior, refresh coalescing, logout, responsive chat navigation, composer
+  behavior, and accessibility smoke checks. Authentication tests run against a
+  deterministic local contract server rather than embedding production secrets.
 - Browser visual QA: desktop and mobile screenshots compared against the
   accepted concepts.
 

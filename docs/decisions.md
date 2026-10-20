@@ -6,6 +6,11 @@ The backend returns access and rotating refresh tokens in JSON. HyperThread Web
 stores them in secure HttpOnly cookies set by same-origin route handlers. Client
 JavaScript receives only an access token in memory when opening Socket.IO. This
 avoids persistent browser token storage while preserving the backend contract.
+Protected page requests are verified against `/auth/me` in Next Proxy and bound
+to the session metadata user ID. Proxy marks only that request as verified for
+the chat layout; cookie presence alone never authorizes a page. Token rotation is
+owned by one dedicated route because Proxy and route handlers have separate
+production runtimes.
 
 ## ADR-002: TanStack Query owns server state
 

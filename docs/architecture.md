@@ -26,14 +26,20 @@ app/
   (auth)/login
   (auth)/register
   (app)/chat
+  session/restore
   api/auth/{login,register,logout,session,socket-token}
+  api/auth/session/refresh
   api/chat/[...path]
 ```
 
-The auth pages are public. The chat layout restores the server-owned session
-through `/api/auth/session` and redirects unauthenticated users. Logout clears
-frontend cookies and disconnects the socket; it cannot revoke the backend
-session because no endpoint exists.
+The auth pages are public. Next Proxy verifies the access token with the auth
+service before rendering chat and forwards a request-only verification header to
+the protected layout. When refresh is required, Proxy redirects to a small
+restoration page; it never rotates tokens itself. That page calls the one
+dedicated refresh route before returning to chat. Invalid sessions are cleared
+and redirected to login; an auth-service outage returns a non-cacheable `503`
+rather than weakening the check. Logout clears frontend cookies and disconnects
+the socket; it cannot revoke the backend session because no endpoint exists.
 
 ## Module boundaries
 
@@ -61,14 +67,20 @@ src/
    returned user ID/username as non-sensitive HttpOnly session metadata.
 3. Protected route handlers read the access cookie and proxy with a bearer
    header.
-4. On a 401, a process-local single-flight refresh rotates cookies, then the
-   request is retried once. Failure clears all session cookies.
+4. On a 401, browser flows call the dedicated session-refresh route, whose
+   process-local single-flight operation rotates cookies. Proxy and the
+   socket-token route never rotate, avoiding cross-runtime reuse of the same
+   refresh token. Failure clears all session cookies.
 5. API errors keep the backend `errorCode` and user-safe `message`.
 
-The process-local lock prevents duplicate refresh calls within one Next process.
-It does not provide distributed locking across multiple frontend instances; a
-production deployment should add a shared session coordinator or update the
-backend to issue/revoke cookies directly.
+Session and socket-token responses explicitly use `Cache-Control: no-store`.
+Token-bearing responses never enter shared or browser HTTP caches.
+
+The process-local lock coalesces concurrent calls handled by the refresh route in
+one Next runtime. It does not provide distributed locking across multiple
+frontend instances; a horizontally scaled production deployment should add a
+shared session coordinator or update the backend to issue/revoke cookies
+directly.
 
 ## Server and realtime state
 

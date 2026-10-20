@@ -7,11 +7,19 @@ export default defineConfig({
     baseURL: "http://localhost:5000",
     trace: "on-first-retry",
   },
-  webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:5000",
-    reuseExistingServer: true,
-  },
+  webServer: [
+    {
+      command: "node tests/fixtures/auth-backend.mjs",
+      url: "http://localhost:4100/test/stats",
+      reuseExistingServer: true,
+    },
+    {
+      command:
+        "env AUTH_SERVICE_URL=http://127.0.0.1:4100 CHAT_SERVICE_URL=http://127.0.0.1:4001 pnpm dev",
+      url: "http://localhost:5000",
+      reuseExistingServer: true,
+    },
+  ],
   projects: [
     {
       name: "chromium",

@@ -1,16 +1,169 @@
 import { expect, test } from "@playwright/test";
 
-test("renders the responsive foundation shell", async ({ page }, testInfo) => {
+const sessionCookieNames = [
+  "ht_access",
+  "ht_refresh",
+  "ht_user_id",
+  "ht_username",
+];
+
+test("routes signed-out visitors to the responsive login experience", async ({
+  page,
+}) => {
   await page.goto("/");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(
+    page.getByRole("link", { name: "HyperThread" }).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Sign in to HyperThread" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Email or username")).toBeVisible();
+});
+
+test("protects chat and validates account creation", async ({ page }) => {
+  await page.goto("/chat");
+  await expect(page).toHaveURL(/\/login$/);
+
+  await page.goto("/register");
+  await expect(page).toHaveURL(/\/register$/);
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(
+    page.getByText("Username must be at least 3 characters."),
+  ).toBeVisible();
+  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
+});
+
+test("creates a hardened session and signs out from the chat shell", async ({
+  page,
+  context,
+}, testInfo) => {
+  const username = `browser_${testInfo.project.name.replace(/\W/g, "_")}`;
+  await page.goto("/login");
+  await page.getByLabel("Email or username").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("Thread123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
   await expect(page).toHaveURL(/\/chat$/);
-  await expect(page.getByLabel("HyperThread")).toBeVisible();
-  if (testInfo.project.name === "mobile") {
-    await expect(
-      page.getByText(/Sign in will connect this workspace/),
-    ).toBeVisible();
-  } else {
-    await expect(
-      page.getByText("Your conversation space is ready"),
-    ).toBeVisible();
+  await expect(page.getByText(username, { exact: true })).toBeVisible();
+  const cookies = await context.cookies();
+  for (const name of sessionCookieNames) {
+    expect(cookies.find((cookie) => cookie.name === name)).toMatchObject({
+      httpOnly: true,
+      sameSite: "Lax",
+    });
   }
+
+  const tokenResponse = await page.request.get("/api/auth/socket-token");
+  expect(tokenResponse.status()).toBe(200);
+  expect(tokenResponse.headers()["cache-control"]).toContain("no-store");
+  expect(await tokenResponse.json()).toEqual({
+    accessToken: `access-${username}`,
+  });
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  const remainingNames = (await context.cookies()).map((cookie) => cookie.name);
+  for (const name of sessionCookieNames)
+    expect(remainingNames).not.toContain(name);
+});
+
+test("rejects a forged session and clears its cookies", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(
+    [
+      ["ht_refresh", "invalid-forged"],
+      ["ht_user_id", "forged-user"],
+      ["ht_username", "forged"],
+    ].map(([name, value]) => ({
+      name,
+      value,
+      url: "http://localhost:5000",
+      httpOnly: true,
+      sameSite: "Lax" as const,
+    })),
+  );
+
+  await page.goto("/chat");
+  await expect(page).toHaveURL(/\/login$/);
+  const remainingNames = (await context.cookies()).map((cookie) => cookie.name);
+  for (const name of sessionCookieNames)
+    expect(remainingNames).not.toContain(name);
+});
+
+test("coalesces concurrent refreshes and tolerates non-JSON auth failures", async ({
+  page,
+  context,
+}, testInfo) => {
+  const username = `parallel-${testInfo.project.name}-${Date.now()}`;
+  const refreshToken = `refresh-${username}`;
+  await context.addCookies(
+    [
+      ["ht_refresh", refreshToken],
+      ["ht_user_id", `user-${username}`],
+      ["ht_username", username],
+    ].map(([name, value]) => ({
+      name,
+      value,
+      url: "http://localhost:5000",
+      httpOnly: true,
+      sameSite: "Lax" as const,
+    })),
+  );
+
+  const responses = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      page.request.post("/api/auth/session/refresh"),
+    ),
+  );
+  expect(responses.every((response) => response.status() === 200)).toBe(true);
+  const stats = await page.request.get(
+    `http://127.0.0.1:4100/test/stats?token=${encodeURIComponent(refreshToken)}`,
+  );
+  expect(await stats.json()).toEqual({ refreshCount: 1 });
+  const socketToken = await page.request.get("/api/auth/socket-token");
+  expect(socketToken.status()).toBe(200);
+
+  await context.clearCookies();
+  const failure = await page.request.post("/api/auth/login", {
+    data: { identifier: "html-error", password: "Thread123" },
+  });
+  expect(failure.status()).toBe(500);
+  expect(await failure.json()).toEqual({
+    message: "We couldn't sign you in.",
+  });
+});
+
+test("does not rotate in both Proxy and the socket-token route", async ({
+  page,
+  context,
+}, testInfo) => {
+  const username = `cross-runtime-${testInfo.project.name}-${Date.now()}`;
+  const refreshToken = `refresh-${username}`;
+  await context.addCookies(
+    [
+      ["ht_refresh", refreshToken],
+      ["ht_user_id", `user-${username}`],
+      ["ht_username", username],
+    ].map(([name, value]) => ({
+      name,
+      value,
+      url: "http://localhost:5000",
+      httpOnly: true,
+      sameSite: "Lax" as const,
+    })),
+  );
+
+  const [, socketResponse] = await Promise.all([
+    page.goto("/chat"),
+    page.request.get("/api/auth/socket-token"),
+  ]);
+  expect([401, 200]).toContain(socketResponse.status());
+  await expect(page).toHaveURL(/\/chat$/);
+  const stats = await page.request.get(
+    `http://127.0.0.1:4100/test/stats?token=${encodeURIComponent(refreshToken)}`,
+  );
+  expect(await stats.json()).toEqual({ refreshCount: 1 });
 });
