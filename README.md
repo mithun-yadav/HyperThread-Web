@@ -68,3 +68,5 @@ suite.
 See [backend integration](docs/backend-integration.md),
 [architecture](docs/architecture.md), and [testing](docs/testing.md) for verified
 contracts and project conventions.
+
+Made with ❤️ by Mithun.
